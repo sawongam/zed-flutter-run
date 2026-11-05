@@ -1,0 +1,15 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+pubspec_overrides.yaml
+*.log
+# Rust
+target/
+# Editors / OS
+.idea/
+.DS_Store
+# Per-user state written by the tool
+.zed/*.local.json
+# Test scratch state written by integration tests
+cli/.dart_tool/flutter_run_test/

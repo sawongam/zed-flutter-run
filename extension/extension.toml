@@ -1,0 +1,15 @@
+id = "flutter-run-debugger"
+name = "Flutter Run & Debug"
+version = "0.1.0"
+schema_version = 1
+authors = ["Flutter Run & Debug contributors"]
+description = "Flutter Run & Debug: hot reload, reload on save, device picker and DevTools for Zed."
+repository = "https://github.com/sawongam/zed-flutter-run"
+
+[debug_adapters.FlutterRun]
+# schema: debug_adapter_schemas/FlutterRun.json (default path)
+
+[[capabilities]]
+kind = "download_file"
+host = "github.com"
+path = ["sawongam", "zed-flutter-run", "**"]

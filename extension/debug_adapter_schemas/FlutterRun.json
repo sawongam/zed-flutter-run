@@ -1,0 +1,181 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Flutter Run & Debug (FlutterRun) Debug Adapter Configuration",
+  "type": "object",
+  "properties": {
+    "adapter": {
+      "type": "string",
+      "description": "Must be FlutterRun.",
+      "enum": [
+        "FlutterRun"
+      ]
+    },
+    "label": {
+      "type": "string",
+      "description": "Human-readable name for this debug configuration.",
+      "examples": [
+        "Flutter: Debug"
+      ]
+    },
+    "request": {
+      "type": "string",
+      "description": "Launch a new app or attach to a running one.",
+      "enum": [
+        "launch",
+        "attach"
+      ],
+      "default": "launch"
+    },
+    "type": {
+      "type": "string",
+      "description": "Debug a Flutter app or a plain Dart program.",
+      "enum": [
+        "flutter",
+        "dart"
+      ],
+      "default": "flutter"
+    },
+    "program": {
+      "type": "string",
+      "description": "Entry point to run.",
+      "default": "lib/main.dart",
+      "examples": [
+        "lib/main.dart",
+        "bin/main.dart"
+      ]
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Working directory. Defaults to the worktree root.",
+      "examples": [
+        "$ZED_WORKTREE_ROOT"
+      ]
+    },
+    "args": {
+      "type": "array",
+      "description": "Arguments passed to the app.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "toolArgs": {
+      "type": "array",
+      "description": "Extra arguments for flutter run / flutter attach (for example --flavor dev, -d <id>).",
+      "items": {
+        "type": "string"
+      }
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables for the debug adapter and the app.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "flutterMode": {
+      "type": "string",
+      "description": "Build mode for launch. profile and release are added as --profile / --release in toolArgs.",
+      "enum": [
+        "debug",
+        "profile",
+        "release"
+      ],
+      "default": "debug"
+    },
+    "deviceId": {
+      "type": "string",
+      "description": "Device id; the proxy adds -d <id> unless toolArgs already selects a device."
+    },
+    "platform": {
+      "type": "string",
+      "description": "Accepted for copy-paste compatibility with Dart-Code; ignored."
+    },
+    "vmServiceUri": {
+      "type": "string",
+      "description": "VM service URI to attach to (request attach). Also set toolArgs with -d <device>."
+    },
+    "vmServiceInfoFile": {
+      "type": "string",
+      "description": "File containing JSON {\"uri\": \"ws://...\"} (request attach). The bare-string file written by flutter run --vmservice-out-file does not work (the adapter waits forever); use vmServiceUri instead."
+    },
+    "stopOnEntry": {
+      "type": "boolean",
+      "description": "Pause at the first line of the program."
+    },
+    "noDebug": {
+      "type": "boolean",
+      "description": "Run without the debugger attached."
+    },
+    "debugSdkLibraries": {
+      "type": "boolean",
+      "description": "Passed through to the Dart/Flutter debug adapter."
+    },
+    "debugExternalPackageLibraries": {
+      "type": "boolean",
+      "description": "Passed through to the Dart/Flutter debug adapter."
+    },
+    "evaluateGettersInDebugViews": {
+      "type": "boolean",
+      "description": "Passed through to the Dart/Flutter debug adapter."
+    },
+    "evaluateToStringInDebugViews": {
+      "type": "boolean",
+      "description": "Passed through to the Dart/Flutter debug adapter."
+    },
+    "sendLogsToClient": {
+      "type": "boolean",
+      "description": "Passed through to the Dart/Flutter debug adapter."
+    },
+    "useFvm": {
+      "type": "boolean",
+      "description": "Require the SDK selected by FVM for the project."
+    },
+    "flutterSdkPath": {
+      "type": "string",
+      "description": "Flutter SDK root. First step of SDK resolution."
+    },
+    "reloadOnSave": {
+      "type": "string",
+      "description": "Hot reload when files are saved: only changed files, every save, or off.",
+      "enum": [
+        "changed",
+        "always",
+        "off"
+      ],
+      "default": "changed"
+    },
+    "reloadOnSaveGlobs": {
+      "type": "array",
+      "description": "Extra globs, relative to the project, that also trigger a reload. Each must start with a directory, for example assets/**.json.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reloadOnSaveDebounceMs": {
+      "type": "integer",
+      "description": "Wait after the last change (10 to 5000).",
+      "minimum": 10,
+      "maximum": 5000,
+      "default": 200
+    },
+    "openDevTools": {
+      "type": "string",
+      "description": "Page to open in the browser when the app starts (never = do not open). Needs DDS, so not available with --no-dds.",
+      "enum": [
+        "never",
+        "inspector",
+        "performance",
+        "cpu-profiler",
+        "memory",
+        "network",
+        "logging"
+      ],
+      "default": "never"
+    },
+    "logFile": {
+      "type": "string",
+      "description": "Write the proxy's debug log and DAP traffic to this file."
+    }
+  },
+  "additionalProperties": true
+}
