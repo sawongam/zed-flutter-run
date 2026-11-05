@@ -292,13 +292,16 @@ void main() {
       expect(Directory(sessionsDirectory(env)).listSync(), hasLength(1));
     });
 
-    test('a different flutter_run on the port (wrong token) is stale', () async {
-      final other = await ControlServer.start(control: FakeControl(pid: 5));
-      addTearDown(other.close);
-      final store = SessionStore(env);
-      await store.create(sessionInfo(pid: 5, port: other.port, token: 'old'));
-      expect(await store.list(), isEmpty);
-    });
+    test(
+      'a different flutter_run on the port (wrong token) is stale',
+      () async {
+        final other = await ControlServer.start(control: FakeControl(pid: 5));
+        addTearDown(other.close);
+        final store = SessionStore(env);
+        await store.create(sessionInfo(pid: 5, port: other.port, token: 'old'));
+        expect(await store.list(), isEmpty);
+      },
+    );
 
     test('N stale files are pinged concurrently', () async {
       final probe = DelayedClient(

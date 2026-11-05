@@ -177,7 +177,10 @@ mod tests {
     fn asset_names() {
         let n = |os, arch| asset_name("0.1.0", os, arch).unwrap();
         assert_eq!(n(Os::Linux, Arch::X8664), "flutter_run-v0.1.0-linux-x64");
-        assert_eq!(n(Os::Linux, Arch::Aarch64), "flutter_run-v0.1.0-linux-arm64");
+        assert_eq!(
+            n(Os::Linux, Arch::Aarch64),
+            "flutter_run-v0.1.0-linux-arm64"
+        );
         assert_eq!(n(Os::Mac, Arch::X8664), "flutter_run-v0.1.0-macos-x64");
         assert_eq!(n(Os::Mac, Arch::Aarch64), "flutter_run-v0.1.0-macos-arm64");
         assert_eq!(

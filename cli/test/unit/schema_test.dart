@@ -16,7 +16,9 @@ File _schemaFile() {
     if (file.existsSync()) return file;
     dir = dir.parent;
   }
-  throw StateError('FlutterRun.json not found above ${Directory.current.path}.');
+  throw StateError(
+    'FlutterRun.json not found above ${Directory.current.path}.',
+  );
 }
 
 const _flutter = ProjectInfo(

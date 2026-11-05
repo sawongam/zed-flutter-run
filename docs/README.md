@@ -32,6 +32,7 @@ This folder is the project's memory. Read it before building, and add to it at e
 - [2026-11-04-004: Handoff to the cloud agent](conversations/2026-11-04-004-cloud-handoff.md)
 - [2026-11-04-005: Local verification on Arch, small fixes, authorship cleanup](conversations/2026-11-04-005-local-verification-and-fixes.md)
 - [2026-11-05-006: Rename to zed-flutter-run](conversations/2026-11-05-006-rename-to-zed-flutter-run.md)
+- [2026-11-05-007: First CI run, format fix](conversations/2026-11-05-007-ci-format-fix.md)
 - [2026-11-03-005: Cloud environment setup (Phase 0)](conversations/2026-11-03-005-cloud-env.md) (the cloud container's clock is a day behind the local session's; order by NNN)
 - [2026-11-03-006: Phase 1 research and Gate 1](conversations/2026-11-03-006-phase1-research-gate1.md)
 - [2026-11-03-007: Phase 2 spike and Gate 2](conversations/2026-11-03-007-phase2-spike-gate2.md)
