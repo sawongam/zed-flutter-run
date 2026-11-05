@@ -1,0 +1,5 @@
+name: spike
+description: Proof of concept DAP proxy for Flutter in Zed.
+publish_to: none
+environment:
+  sdk: ^3.0.0

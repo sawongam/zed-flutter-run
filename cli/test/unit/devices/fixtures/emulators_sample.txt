@@ -1,0 +1,18 @@
+   Woah! You appear to be trying to run flutter as root.
+   We strongly recommend running the flutter tool without superuser privileges.
+  /
+📎
+3 available emulators:
+
+Id                  • Name                • Manufacturer • Platform
+
+Pixel_3a_API_30_x86 • Pixel 3a API 30 x86 • Google       • android
+Pixel_7_API_34      • Pixel 7 API 34      • Google       • android
+apple_ios_simulator • iOS Simulator       • Apple        • ios
+
+To run an emulator, run 'flutter emulators --launch <emulator id>'.
+To create a new emulator, run 'flutter emulators --create [--name xyz]'.
+
+You can find more information on managing emulators at the links below:
+  https://developer.android.com/studio/run/managing-avds
+  https://developer.android.com/studio/command-line/avdmanager

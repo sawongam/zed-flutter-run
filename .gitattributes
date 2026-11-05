@@ -1,0 +1,5 @@
+# Keep LF everywhere so `dart format --set-exit-if-changed` and rustfmt agree on every OS.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.ico binary

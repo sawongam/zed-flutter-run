@@ -1,0 +1,5 @@
+tags:
+  integration:          # flutter-tester suite (Linux CI)
+    timeout: 5m
+  integration-dart:     # dart debug_adapter suite + no-Flutter CLI e2e (Linux, macOS, Windows CI)
+    timeout: 5m

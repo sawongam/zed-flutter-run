@@ -1,0 +1,6 @@
+name: dart_console_fixture
+description: Tiny console app used by flutter_run integration tests.
+publish_to: none
+version: 0.0.1
+environment:
+  sdk: ^3.8.0

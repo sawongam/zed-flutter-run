@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Flutter test device",
+    "id": "flutter-tester",
+    "isSupported": true,
+    "targetPlatform": "flutter-tester",
+    "emulator": false,
+    "sdk": "Flutter c197ca5199",
+    "capabilities": {
+      "hotReload": true,
+      "hotRestart": true,
+      "screenshot": false,
+      "flutterExit": true,
+      "hardwareRendering": false,
+      "startPaused": true
+    }
+  },
+  {
+    "name": "Linux",
+    "id": "linux",
+    "isSupported": true,
+    "targetPlatform": "linux-x64",
+    "emulator": false,
+    "sdk": "Ubuntu 24.04.5 LTS 6.18.44-fc-v230",
+    "capabilities": {
+      "hotReload": true,
+      "hotRestart": true,
+      "screenshot": false,
+      "flutterExit": true,
+      "hardwareRendering": false,
+      "startPaused": true
+    }
+  },
+  {
+    "name": "Chrome",
+    "id": "chrome",
+    "isSupported": true,
+    "targetPlatform": "web-javascript",
+    "emulator": false,
+    "sdk": "Google Chrome for Testing 153.0.8010.12",
+    "capabilities": {
+      "hotReload": true,
+      "hotRestart": true,
+      "screenshot": false,
+      "flutterExit": false,
+      "hardwareRendering": false,
+      "startPaused": true
+    }
+  }
+]
