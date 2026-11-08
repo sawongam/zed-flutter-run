@@ -170,13 +170,16 @@ class ShutdownCoordinator {
     if (_adapterExited || phase.isFinishing || _startFuture != null) return;
     if (host.programEnded || _snapshotRunning) return;
     _snapshotRunning = true;
-    withTimeout(clock, adapter.snapshotDescendants(), _t.snapshotWait)
-        .then<void>((pids) {
-          if (_adapterExited || _startFuture != null) return;
-          _recent.add(pids);
-          if (_recent.length > 2) _recent.removeAt(0);
-        }, onError: (Object e) => _log.debug('Periodic snapshot failed: $e'))
-        .whenComplete(() => _snapshotRunning = false);
+    // Fire-and-forget periodic snapshot; failures are logged, not propagated.
+    unawaited(
+      withTimeout(clock, adapter.snapshotDescendants(), _t.snapshotWait)
+          .then<void>((pids) {
+            if (_adapterExited || _startFuture != null) return;
+            _recent.add(pids);
+            if (_recent.length > 2) _recent.removeAt(0);
+          }, onError: (Object e) => _log.debug('Periodic snapshot failed: $e'))
+          .whenComplete(() => _snapshotRunning = false),
+    );
   }
 
   // ------------------------------------------------------------- terminate

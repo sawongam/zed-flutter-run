@@ -317,8 +317,8 @@ void main() {
   group('deviceHintFor', () {
     test('several devices', () {
       for (final text in [
-        'More than one device connected; please specify a device with the '
-            "'-d <deviceId>' flag, or use '-d all' to act on all devices.",
+        ('More than one device connected; please specify a device with the '
+            "'-d <deviceId>' flag, or use '-d all' to act on all devices."),
         'more than one device connected',
       ]) {
         expect(deviceHintFor(text), contains('Flutter: Select Device'));

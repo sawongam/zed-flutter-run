@@ -14,7 +14,8 @@ Future<void> bounded(Clock clock, Future<Object?> future, Duration limit) {
     if (!completer.isCompleted) completer.complete();
   }
 
-  future.then<void>((_) => done(), onError: (Object _) => done());
+  // The outcome is delivered through [completer]; this chain only signals it.
+  unawaited(future.then<void>((_) => done(), onError: (Object _) => done()));
   return completer.future;
 }
 
@@ -42,15 +43,18 @@ Future<T> withTimeout<T>(
       completer.complete(Future<T>.sync(onTimeout));
     }
   });
-  future.then<void>(
-    (value) {
-      timer.cancel();
-      if (!completer.isCompleted) completer.complete(value);
-    },
-    onError: (Object e, StackTrace st) {
-      timer.cancel();
-      if (!completer.isCompleted) completer.completeError(e, st);
-    },
+  // The outcome is delivered through [completer]; this chain only forwards it.
+  unawaited(
+    future.then<void>(
+      (value) {
+        timer.cancel();
+        if (!completer.isCompleted) completer.complete(value);
+      },
+      onError: (Object e, StackTrace st) {
+        timer.cancel();
+        if (!completer.isCompleted) completer.completeError(e, st);
+      },
+    ),
   );
   return completer.future;
 }

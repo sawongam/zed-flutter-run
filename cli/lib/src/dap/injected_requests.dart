@@ -89,11 +89,14 @@ class InjectedRequests {
     final result = Completer<DapJson>();
     _inFlight.add(result);
     Timer? timer;
-    request.response.then<void>((response) {
-      timer?.cancel();
-      _inFlight.remove(result);
-      if (!result.isCompleted) result.complete(response);
-    });
+    // The response is forwarded through [result]; this chain only completes it.
+    unawaited(
+      request.response.then<void>((response) {
+        timer?.cancel();
+        _inFlight.remove(result);
+        if (!result.isCompleted) result.complete(response);
+      }),
+    );
     if (timeout != null) {
       timer = clock.timer(timeout, () {
         if (result.isCompleted) return;

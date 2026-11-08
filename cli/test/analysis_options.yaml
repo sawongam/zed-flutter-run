@@ -1,0 +1,8 @@
+include: ../analysis_options.yaml
+
+# Tests drive fakeAsync/in-memory fakes: results are intentionally discarded
+# inside synchronous callbacks and in-memory controllers are never closed.
+linter:
+  rules:
+    discarded_futures: false
+    close_sinks: false

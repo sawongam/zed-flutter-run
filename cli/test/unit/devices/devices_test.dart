@@ -527,8 +527,8 @@ void main() {
         expect(r.code, 0);
         expect(store.readSync(project)!.deviceId, 'chrome');
         expect(console.outLines, [
-          'Saved device: Chrome (chrome). It is used the next time you start '
-              'the app. The running app keeps its device.',
+          ('Saved device: Chrome (chrome). It is used the next time you start '
+              'the app. The running app keeps its device.'),
           'Start the app from the debugger (F4 opens the picker in Zed).',
         ]);
       });

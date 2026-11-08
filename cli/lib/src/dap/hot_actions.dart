@@ -206,37 +206,40 @@ class HotActions {
     } on Object catch (e) {
       pending = Future<DapJson>.error(e);
     }
-    pending.then(
-      (response) {
-        watch.stop();
-        final timedOut = flight.timedOut;
-        finish();
-        if (timedOut) return;
-        complete(_fromResponse(action, reason, response, watch.elapsed));
-      },
-      onError: (Object e) {
-        watch.stop();
-        finish();
-        if (e is TimeoutException) {
-          complete(
-            HotResult(
-              ok: false,
-              error: HotError.timeout,
-              message: 'No answer from the app in time.',
-              duration: watch.elapsed,
-            ),
-          );
-        } else {
-          complete(
-            HotResult(
-              ok: false,
-              error: HotError.sessionEnded,
-              message: 'The debug session has ended.',
-              duration: watch.elapsed,
-            ),
-          );
-        }
-      },
+    // The result is delivered through the caller's completer, not this chain.
+    unawaited(
+      pending.then(
+        (response) {
+          watch.stop();
+          final timedOut = flight.timedOut;
+          finish();
+          if (timedOut) return;
+          complete(_fromResponse(action, reason, response, watch.elapsed));
+        },
+        onError: (Object e) {
+          watch.stop();
+          finish();
+          if (e is TimeoutException) {
+            complete(
+              HotResult(
+                ok: false,
+                error: HotError.timeout,
+                message: 'No answer from the app in time.',
+                duration: watch.elapsed,
+              ),
+            );
+          } else {
+            complete(
+              HotResult(
+                ok: false,
+                error: HotError.sessionEnded,
+                message: 'The debug session has ended.',
+                duration: watch.elapsed,
+              ),
+            );
+          }
+        },
+      ),
     );
     return flight.result.future;
   }

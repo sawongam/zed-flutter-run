@@ -1,7 +1,7 @@
 # STATUS: Flutter Run & Debug in Zed (`flutter_run` 0.1.0)
 
 - **Date:** 2026-11-08 (first written 2026-11-03 at the end of the autonomous cloud run)
-- **Where:** the code is on `master` (history was squashed). The branch `build/mvp` and its draft PR no longer exist; issue/PR #1 is now a Dependabot PR. Work on the `improve/world-class` branch (docs, hygiene, CI hardening, internal refactors, a debug locator) is **in progress** and not described here as done.
+- **Where:** the code is on `master` (history was squashed). The branch `build/mvp` and its draft PR no longer exist; issue/PR #1 is now a Dependabot PR. The `improve/world-class` branch (not yet pushed or merged) adds the debug locator, the internal refactor (ADR 0010), CI and supply-chain hardening and new docs; see [conversation 009](conversations/2026-11-08-009-world-class-improvements.md). Its tests pass locally; it has not run on GitHub CI or in real Zed.
 - **Published:** nothing. No pub.dev, crates.io, Homebrew, Scoop, Zed registry, GitHub release, tag, or issue post. The steps are in [RELEASE.md](RELEASE.md).
 - **CI:** the latest `master` run, [42020956342](https://github.com/sawongam/zed-flutter-run/actions/runs/42020956342), passed all 8 jobs, including Windows. The Windows session-file flake is fixed.
 

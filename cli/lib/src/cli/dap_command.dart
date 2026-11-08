@@ -140,20 +140,24 @@ class DapCommand extends Command<int> {
     if (cwdOption == null || cwdOption.isEmpty) {
       usageException('The option --cwd is required.');
     }
+    // ignore: close_sinks, stderr is owned by the process and is never closed.
     final errorSink = _errorSink ?? stderr;
     final done = Completer<int>();
-    runZonedGuarded(
-      () async {
-        try {
-          done.complete(await _run(cwdOption));
-        } on Object catch (e, st) {
-          _wiring.logger.error('The debug proxy failed unexpectedly', e, st);
-          if (!done.isCompleted) done.complete(ExitCodes.internal);
-        }
-      },
-      (e, st) => _wiring.logger.error('Unexpected error in the proxy', e, st),
-      zoneSpecification: ZoneSpecification(
-        print: (self, parent, zone, line) => errorSink.writeln(line),
+    // The zone's result is unused: completion is reported through [done].
+    unawaited(
+      runZonedGuarded(
+        () async {
+          try {
+            done.complete(await _run(cwdOption));
+          } on Object catch (e, st) {
+            _wiring.logger.error('The debug proxy failed unexpectedly', e, st);
+            if (!done.isCompleted) done.complete(ExitCodes.internal);
+          }
+        },
+        (e, st) => _wiring.logger.error('Unexpected error in the proxy', e, st),
+        zoneSpecification: ZoneSpecification(
+          print: (self, parent, zone, line) => errorSink.writeln(line),
+        ),
       ),
     );
     return done.future;

@@ -49,12 +49,14 @@ class StreamDapChannel implements DapChannel {
     if (sink is IOSink) {
       // A broken pipe is reported here, asynchronously; without a listener it
       // would surface as an uncaught error.
-      sink.done.then<void>(
-        (_) => _outputClosed = true,
-        onError: (Object e) {
-          _outputClosed = true;
-          _logger.debug('The $_label channel closed: $e');
-        },
+      unawaited(
+        sink.done.then<void>(
+          (_) => _outputClosed = true,
+          onError: (Object e) {
+            _outputClosed = true;
+            _logger.debug('The $_label channel closed: $e');
+          },
+        ),
       );
     }
   }

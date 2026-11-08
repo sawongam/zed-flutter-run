@@ -11,7 +11,9 @@ class _Opener implements BrowserOpener {
   Object? failure;
   @override
   Future<void> open(Uri url) async {
-    if (failure != null) throw failure!;
+    if (failure != null) {
+      Error.throwWithStackTrace(failure!, StackTrace.current);
+    }
     opened.add(url);
   }
 }

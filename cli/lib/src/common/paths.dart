@@ -95,7 +95,7 @@ String? findExecutableOnPath(
         .where((e) => e.isNotEmpty)
         .toList();
     final lowerName = name.toLowerCase();
-    final hasKnownExtension = listed.any((e) => lowerName.endsWith(e));
+    final hasKnownExtension = listed.any(lowerName.endsWith);
     extensions = hasKnownExtension ? <String>['', ...listed] : listed;
   }
 

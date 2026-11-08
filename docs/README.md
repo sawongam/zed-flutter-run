@@ -46,6 +46,7 @@ The history of how the project was planned and built. Read it before changing th
 - [2026-11-05-006: Rename to zed-flutter-run](conversations/2026-11-05-006-rename-to-zed-flutter-run.md)
 - [2026-11-05-007: First CI run, format fix](conversations/2026-11-05-007-ci-format-fix.md)
 - [2026-11-08-008: Status check and quality review](conversations/2026-11-08-008-quality-review.md)
+- [2026-11-08-009: World-class improvements (improve/world-class)](conversations/2026-11-08-009-world-class-improvements.md)
 - [2026-11-03-005: Cloud environment setup (Phase 0)](conversations/2026-11-03-005-cloud-env.md) (the cloud container's clock is a day behind the local session's; order by NNN)
 - [2026-11-03-006: Phase 1 research and Gate 1](conversations/2026-11-03-006-phase1-research-gate1.md)
 - [2026-11-03-007: Phase 2 spike and Gate 2](conversations/2026-11-03-007-phase2-spike-gate2.md)

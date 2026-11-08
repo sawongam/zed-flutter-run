@@ -87,7 +87,7 @@ Future<Socket> _defaultConnector(String host, int port, Duration timeout) =>
 Duration defaultConnectTimeoutFor(HostEnvironment env) =>
     env.isWindows ? const Duration(seconds: 6) : const Duration(seconds: 2);
 
-/// Talks to a session's [ControlServer] over loopback.
+/// Talks to a session's `ControlServer` over loopback.
 class ControlClient {
   ControlClient({
     Duration? connectTimeout,

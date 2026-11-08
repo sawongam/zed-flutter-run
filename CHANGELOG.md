@@ -9,8 +9,23 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 - `flutter_run --version` and `-V` print the same as `flutter_run version`.
+- Debug locator (ADR 0009): Zed tasks that run `flutter run`, `fvm flutter run`, `puro flutter run` or `dart run <file>.dart` can be started as `FlutterRun` debug sessions (needs `languages.Dart.debuggers = ["FlutterRun"]`).
+- The proxy refuses an attach whose `vmServiceUri` is still the `init` placeholder, and a Dart attach without a VM service address, with a clear message.
+- Richer debug.json schema: specific descriptions, `markdownDescription`, examples, and an `x-support` marker per key.
+- Project tooling: issue and PR templates, CODEOWNERS, labels, `tool/bootstrap.sh`, a dev container, coverage reports, cargo-deny, OpenSSF Scorecard, CodeQL, build provenance attestations, gated draft releases and pub.dev publishing, release-please version PRs.
+- Docs: CONFIGURATION, COMPATIBILITY, TROUBLESHOOTING, PRIVACY, EXTENDING; ADRs 0009 and 0010.
+
+### Changed (internal)
+- The DAP proxy uses an explicit session-phase model and a separate `ShutdownCoordinator`; time, signals, processes and the host OS are injected ports (ADR 0010). An architecture test enforces the module dependency rule.
+- The extension decides how to find `flutter_run` with a pure, tested install planner and typed errors.
+- Stricter lints for Rust (`unsafe_code` forbidden, selected pedantic) and Dart.
+- The Rust toolchain is pinned in `extension/rust-toolchain.toml`.
 
 ### Fixed
+- A stop signal during start-up no longer leaves the session file behind or lets the control channel accept commands while stopping.
+- A refused attach is recorded as an attach, so Zed's stop is answered promptly.
+- Malformed DAP messages (non-string `command`, `type` or `event`) are forwarded instead of throwing.
+- The modal debug scenario picks `type: dart` only for programs under `bin/` or `tool/`.
 - Atomic file writes retry a refused rename with backoff for about 5 s (Windows sharing violations), and the session store test no longer starves the rename with a busy reader.
 - The sample fixture app accepts Dart `^3.5.0` instead of `^3.13.7`.
 

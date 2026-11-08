@@ -20,7 +20,8 @@ class _ThrowingCommand extends Command<int> {
   String get description => 'throws';
 
   @override
-  Future<int> run() async => throw error;
+  Future<int> run() async =>
+      Error.throwWithStackTrace(error, StackTrace.current);
 }
 
 class _BlockingCommand extends Command<int> {

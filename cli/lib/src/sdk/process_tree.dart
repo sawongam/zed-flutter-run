@@ -216,9 +216,9 @@ const List<String> windowsPowerShellArgs = [
   '-NoProfile',
   '-NonInteractive',
   '-Command',
-  'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,'
+  ('Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,'
       "@{n='Created';e={\$_.CreationDate.ToFileTimeUtc()}},CommandLine | "
-      'ConvertTo-Csv -NoTypeInformation',
+      'ConvertTo-Csv -NoTypeInformation'),
 ];
 const List<String> windowsWmicArgs = [
   'process',
@@ -377,7 +377,7 @@ Future<void> killTree(
   Clock clock = const SystemClock(),
 }) async {
   final read = readTable ?? () => readProcessTable(env);
-  final send = sendSignal ?? ((pid, signal) => Process.killPid(pid, signal));
+  final SignalSender send = sendSignal ?? Process.killPid;
 
   Future<Set<int>> eligible() async {
     final table = await read();
@@ -403,7 +403,7 @@ Future<void> killTree(
   }
 
   if (env.isWindows) {
-    final run = runProcess ?? ((e, a) => Process.run(e, a));
+    final run = runProcess ?? Process.run;
     Future<void> taskkill(int pid, {required bool tree}) async {
       try {
         await run('taskkill', ['/PID', '$pid', if (tree) '/T', '/F']);

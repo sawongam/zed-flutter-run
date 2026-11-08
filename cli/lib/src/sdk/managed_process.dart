@@ -12,7 +12,10 @@ import 'process_tree.dart';
 class ManagedProcess {
   ManagedProcess._(this._process, this._host, this._logger, this._spec) {
     _exited = false;
-    _process.exitCode.then((_) => _exited = true, onError: (Object _) {});
+    // Only records the exit; nothing awaits it.
+    unawaited(
+      _process.exitCode.then((_) => _exited = true, onError: (Object _) {}),
+    );
   }
 
   final Process _process;

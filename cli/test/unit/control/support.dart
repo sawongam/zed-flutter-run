@@ -59,7 +59,7 @@ class FakeControl implements SessionControl {
     reloadArgs.add(args);
     await Future<void>.delayed(reloadDelay);
     final error = reloadError;
-    if (error != null) throw error;
+    if (error != null) Error.throwWithStackTrace(error, StackTrace.current);
     return {'durationMs': 593, 'coalesced': false};
   }
 

@@ -79,8 +79,12 @@ class DapProxy implements RequestInjector {
       nextSeq: _injected.nextSyntheticSeq,
       notice: notice,
     );
-    _closed.future.then<void>(
-      (_) => _injected.failPending(StateError('The debug session has ended.')),
+    // Fire-and-forget: reacts to the session ending, nothing awaits it.
+    unawaited(
+      _closed.future.then<void>(
+        (_) =>
+            _injected.failPending(StateError('The debug session has ended.')),
+      ),
     );
   }
 
@@ -146,12 +150,15 @@ class DapProxy implements RequestInjector {
       _log.debug('adapter stderr: $line');
     }, onError: (Object e) => _log.debug('adapter stderr error: $e'));
     _coordinator.startSnapshots();
-    _adapter.exitCode.then<void>(
-      (code) => _guard(() => _onAdapterExit(code), 'Handling adapter exit'),
-      onError: (Object e, StackTrace st) {
-        _log.error('Could not read the adapter exit code', e, st);
-        _guard(() => _onAdapterExit(1), 'Handling adapter exit');
-      },
+    // Fire-and-forget: reacts to the adapter exiting; errors go through _guard.
+    unawaited(
+      _adapter.exitCode.then<void>(
+        (code) => _guard(() => _onAdapterExit(code), 'Handling adapter exit'),
+        onError: (Object e, StackTrace st) {
+          _log.error('Could not read the adapter exit code', e, st);
+          _guard(() => _onAdapterExit(1), 'Handling adapter exit');
+        },
+      ),
     );
     return _done.future;
   }
@@ -414,14 +421,17 @@ class DapProxy implements RequestInjector {
   /// Runs [body] without letting an error escape as an uncaught async error;
   /// a failure is logged and ends the session through [_finish].
   void _guard(Future<void> Function() body, String what) {
-    Future<void>.sync(body).catchError((Object e, StackTrace st) {
-      _log.error('$what failed', e, st);
-      if (!_phase.isFinishing) {
-        return _finish(_exitCodeOverride ?? 1).catchError((Object e2) {
-          _log.error('Ending the session failed', e2);
-        });
-      }
-    });
+    // Errors are handled inside; the session ends through [_finish].
+    unawaited(
+      Future<void>.sync(body).catchError((Object e, StackTrace st) {
+        _log.error('$what failed', e, st);
+        if (!_phase.isFinishing) {
+          return _finish(_exitCodeOverride ?? 1).catchError((Object e2) {
+            _log.error('Ending the session failed', e2);
+          });
+        }
+      }),
+    );
   }
 
   Future<void> _flushClient() async {

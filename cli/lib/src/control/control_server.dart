@@ -201,7 +201,8 @@ class _Connection {
     _destroyed = true;
     _lineTimer?.cancel();
     _graceTimer?.cancel();
-    _subscription?.cancel();
+    // The socket is destroyed right after; nothing depends on the cancel.
+    unawaited(_subscription?.cancel());
     _socket.destroy();
     _owner._connections.remove(this);
   }
