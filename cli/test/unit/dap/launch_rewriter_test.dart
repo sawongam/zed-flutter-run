@@ -373,4 +373,50 @@ void main() {
       );
     });
   });
+
+  group('attach validation', () {
+    test('the placeholder from init is rejected with guidance', () {
+      final r = rewriter().rewrite('attach', {
+        'vmServiceUri': 'ws://127.0.0.1:PORT/TOKEN=/ws',
+      });
+      expect(r.rejection, contains('flutter run'));
+      expect(r.rejection, contains('vmServiceUri'));
+    });
+
+    test('a real address or an info file is accepted', () {
+      expect(
+        rewriter().rewrite('attach', {
+          'vmServiceUri': 'ws://127.0.0.1:5000/abc=/ws',
+        }).rejection,
+        isNull,
+      );
+      expect(
+        rewriter().rewrite('attach', {
+          'vmServiceInfoFile': '/tmp/vm.json',
+        }).rejection,
+        isNull,
+      );
+    });
+
+    test('the dart adapter needs an address or an info file', () {
+      final dart = rewriter(kind: DapKind.dart);
+      expect(dart.rewrite('attach', {}).rejection, isNotNull);
+      expect(
+        dart.rewrite('attach', {'vmServiceUri': '  '}).rejection,
+        isNotNull,
+      );
+    });
+
+    test('flutter attach may wait for the app to start', () {
+      expect(rewriter().rewrite('attach', {}).rejection, isNull);
+      expect(
+        rewriter(saved: 'emulator-1').rewrite('attach', {}).rejection,
+        isNull,
+      );
+    });
+
+    test('launch is never rejected', () {
+      expect(rewriter().rewrite('launch', {}).rejection, isNull);
+    });
+  });
 }
