@@ -428,7 +428,7 @@ Future<void> killTree(
       for (final pid in round) {
         if (pid > 4) await taskkill(pid, tree: pid == rootPid);
       }
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await clock.delay(const Duration(milliseconds: 100));
       round = await eligible();
     }
     return;
@@ -442,7 +442,7 @@ Future<void> killTree(
 
   final deadline = clock.now().add(grace);
   while (true) {
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await clock.delay(const Duration(milliseconds: 50));
     alive = await eligible();
     if (alive.isEmpty) return;
     if (!clock.now().isBefore(deadline)) break;
@@ -452,7 +452,7 @@ Future<void> killTree(
   }
   // Give the kernel a moment so callers observe the processes gone.
   for (var i = 0; i < 20; i++) {
-    await Future<void>.delayed(const Duration(milliseconds: 25));
+    await clock.delay(const Duration(milliseconds: 25));
     if ((await eligible()).isEmpty) return;
   }
 }

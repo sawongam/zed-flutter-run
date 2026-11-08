@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter_run/src/common/clock.dart';
 import 'package:flutter_run/src/common/host_environment.dart';
 import 'package:flutter_run/src/sdk/process_tree.dart';
 import 'package:test/test.dart';
@@ -14,6 +16,31 @@ const _psGolden = '''
 garbage line
   abc  def
 ''';
+
+/// A clock whose `delay` only moves its own time, so tests never wait.
+class _ManualClock implements Clock {
+  DateTime time = DateTime.utc(2026);
+  final List<Duration> delays = [];
+
+  @override
+  DateTime now() => time;
+
+  @override
+  Future<void> delay(Duration d) async {
+    delays.add(d);
+    time = time.add(d);
+  }
+
+  @override
+  Timer timer(Duration d, void Function() cb) => throw UnimplementedError();
+
+  @override
+  Timer periodic(Duration d, void Function(Timer) cb) =>
+      throw UnimplementedError();
+
+  @override
+  Stopwatch stopwatch() => Stopwatch();
+}
 
 HostEnvironment posix() => HostEnvironment(
   os: HostOs.linux,
@@ -236,6 +263,41 @@ void main() {
       expect(calls, greaterThan(2));
       expect(pidsOf(ProcessSignal.sigterm), {10, 11});
       expect(pidsOf(ProcessSignal.sigkill), {10, 11});
+    });
+  });
+
+  group('killTree with an injected clock', () {
+    test('waits through clock.delay, not real time, and escalates', () async {
+      ProcessInfo row(int pid, int ppid, String start) =>
+          ProcessInfo(pid, ppid, startTime: start);
+      final clock = _ManualClock();
+      final sent = <(int, ProcessSignal)>[];
+      final started = DateTime.now();
+      await killTree(
+        10,
+        {11},
+        posix(),
+        grace: const Duration(seconds: 2),
+        startTimes: {10: 'a', 11: 'b'},
+        readTable: () async =>
+            ProcessTable([row(10, 1, 'a'), row(11, 10, 'b')]),
+        sendSignal: (pid, s) {
+          sent.add((pid, s));
+          return true;
+        },
+        clock: clock,
+      );
+      expect(clock.delays, isNotEmpty);
+      expect(
+        clock.time.difference(DateTime.utc(2026)),
+        greaterThanOrEqualTo(const Duration(seconds: 2)),
+      );
+      expect(sent.any((e) => e.$2 == ProcessSignal.sigkill), isTrue);
+      expect(
+        DateTime.now().difference(started),
+        lessThan(const Duration(seconds: 1)),
+        reason: 'no real waiting',
+      );
     });
   });
 

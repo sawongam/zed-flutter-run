@@ -299,6 +299,7 @@ class DapProxy implements RequestInjector {
     final result = _rewriter.rewrite(command, message.arguments);
     final rejection = result.rejection;
     if (rejection != null) {
+      _tracker.requestSeen(command);
       _failures.requestRejected(message, rejection);
       return null;
     }

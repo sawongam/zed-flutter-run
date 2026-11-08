@@ -92,7 +92,7 @@ Exit codes:
     StreamSubscription<ProcessSignal>? sigint;
     if (!isDapCommand(args)) {
       try {
-        sigint = ProcessSignal.sigint.watch().listen((_) {
+        sigint = wiring.signals.watch(ProcessSignal.sigint).listen((_) {
           if (!interrupted.isCompleted) {
             interrupted.complete(ExitCodes.interrupted);
           }

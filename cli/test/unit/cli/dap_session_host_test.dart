@@ -7,6 +7,7 @@ import 'package:flutter_run/src/cli/dap_session_host.dart';
 import 'package:flutter_run/src/common/clock.dart';
 import 'package:flutter_run/src/common/errors.dart';
 import 'package:flutter_run/src/common/logger.dart';
+import 'package:flutter_run/src/control/control_protocol.dart';
 import 'package:flutter_run/src/control/session_info.dart';
 import 'package:flutter_run/src/control/session_store.dart';
 import 'package:flutter_run/src/dap/launch_rewriter.dart';
@@ -31,6 +32,13 @@ class _FakeAsyncClock implements Clock {
 
   @override
   Timer periodic(Duration d, void Function(Timer) cb) => Timer.periodic(d, cb);
+
+  @override
+  Future<void> delay(Duration d) {
+    final c = Completer<void>();
+    timer(d, c.complete);
+    return c.future;
+  }
 
   @override
   Stopwatch stopwatch() => _fa.getClock(DateTime.utc(2026)).stopwatch();
@@ -418,6 +426,55 @@ void main() {
         expect(store.handle!.deleteCount, 1);
       });
     });
+
+    test(
+      'a signal during start-up marks the control ending before it serves',
+      () {
+        fakeAsync((fa) {
+          final adapter = FakeAdapter();
+          SessionControl? served;
+          final host = DapSessionHost(
+            env: t.wiring.env,
+            clock: _FakeAsyncClock(fa),
+            logger: Logger.silent(),
+            signals: FakeSignalSource(),
+            sessionStore: _FakeStore(_Trace()),
+            deviceStore: t.wiring.deviceStore,
+            browserOpener: _FakeBrowser(),
+            client: FakeChannel(),
+            adapter: adapter,
+            kind: DapKind.flutter,
+            request: 'launch',
+            cwd: '${t.dir.path}/app',
+            clientVersion: null,
+            resolvedExecutable: '/opt/tools/flutter_run',
+            attachWatchdog: const Duration(seconds: 15),
+            sessionWriteDebounce: const Duration(milliseconds: 50),
+            pid: 1,
+            startControlServer: ({required control, logger}) async {
+              served = control;
+              return _FakeEndpoint(_Trace());
+            },
+          );
+          host.requestShutdown('signal early');
+          host.run();
+          fa.flushMicrotasks();
+          adapter.die(0);
+          fa.elapse(const Duration(seconds: 10));
+          expect(served, isNotNull);
+          Object? error;
+          served!
+              .restart(const {})
+              .then<void>((_) {}, onError: (Object e) => error = e);
+          fa.flushMicrotasks();
+          expect(error, isA<ControlException>());
+          expect(
+            (error! as ControlException).code,
+            ControlErrorCode.sessionEnded,
+          );
+        });
+      },
+    );
 
     test('watches the signals while running and releases them after', () {
       inSession((h) {

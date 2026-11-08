@@ -52,6 +52,29 @@ void main() {
       expect(m.command, isNull);
     });
 
+    test(
+      'non-string and non-object fields read as null/empty, never throw',
+      () {
+        final m = DapMessage({
+          'seq': 'x',
+          'type': 5,
+          'command': 123,
+          'event': ['a'],
+          'arguments': 'nope',
+          'body': 7,
+          'success': 'yes',
+        });
+        expect(m.type, isNull);
+        expect(m.command, isNull);
+        expect(m.event, isNull);
+        expect(m.arguments, isEmpty);
+        expect(m.body, isEmpty);
+        expect(m.isRequest, isFalse);
+        expect(m.success, isFalse);
+        expect(m.failed, isFalse);
+      },
+    );
+
     test('the constants match the protocol names', () {
       expect(DapCommands.hotReload, 'hotReload');
       expect(DapCommands.hotRestart, 'hotRestart');

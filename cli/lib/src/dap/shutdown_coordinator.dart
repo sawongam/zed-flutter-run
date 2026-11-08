@@ -97,6 +97,7 @@ class ShutdownCoordinator {
   Timer? _disconnectTimer;
 
   bool _shutdownRequested = false;
+  bool _finishing = false;
 
   // shared plumbing
   Future<Set<int>>? _startFuture;
@@ -181,6 +182,9 @@ class ShutdownCoordinator {
   // ------------------------------------------------------------- terminate
 
   Future<void> handleTerminate(DapMessage message) async {
+    // The final teardown already began: nothing to stop any more, and a new
+    // flow would leave timers and a late synthetic answer behind.
+    if (_finishing || phase.isFinishing) return;
     if (terminateRequested) {
       host.sendToAdapter(message.raw);
       return;
@@ -310,6 +314,7 @@ class ShutdownCoordinator {
     }
     if (disconnectRequested && requestSeq == _disconnectSeq) {
       _heldDisconnectResponse = response.raw;
+      if (_finishing) return true;
       // The adapter answered: do not make the editor wait for it to exit.
       _disconnectTimer?.cancel();
       _disconnectTimer = clock.timer(_t.disconnectGrace, () {
@@ -465,6 +470,7 @@ class ShutdownCoordinator {
     _terminateTimer?.cancel();
     _stoppingTimer?.cancel();
     _disconnectTimer?.cancel();
+    _finishing = true;
     if (terminateRequested) _terminate = StopFlow.finished;
     if (!_terminateDone.isCompleted) _terminateDone.complete();
   }

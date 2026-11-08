@@ -179,6 +179,41 @@ void main() {
     });
   });
 
+  group('ShutdownCoordinator finishing window', () {
+    test(
+      'a terminate after beginFinish starts nothing and leaves no timers',
+      () {
+        fakeAsync((fa) {
+          final rig = Rig(fa);
+          rig.phase.transition(SessionPhase.finishing);
+          rig.coordinator.beginFinish();
+          unawaited(rig.coordinator.handleTerminate(request(5, 'terminate')));
+          fa.elapse(const Duration(seconds: 30));
+          expect(rig.host.notices, isEmpty);
+          expect(rig.host.toClient, isEmpty);
+          expect(rig.host.toAdapter, isEmpty);
+          expect(rig.coordinator.terminateRequested, isFalse);
+          expect(fa.pendingTimers, isEmpty);
+        });
+      },
+    );
+
+    test('an adapter disconnect answer after beginFinish re-arms no timer', () {
+      fakeAsync((fa) {
+        final rig = Rig(fa);
+        rig.host.isLaunchSession = false;
+        unawaited(rig.coordinator.handleDisconnect(request(8, 'disconnect')));
+        fa.flushMicrotasks();
+        rig.phase.transition(SessionPhase.finishing);
+        rig.coordinator.beginFinish();
+        expect(rig.coordinator.holdResponse(response(8, 'disconnect')), isTrue);
+        fa.elapse(const Duration(seconds: 30));
+        expect(rig.host.finished, isEmpty);
+        expect(rig.clientResponses('disconnect'), isEmpty);
+      });
+    });
+  });
+
   group('ShutdownCoordinator disconnect', () {
     test('an answered disconnect is released after the grace period', () {
       fakeAsync((fa) {

@@ -11,6 +11,9 @@ abstract interface class Clock {
   /// A repeating timer; like `Timer.periodic(d, cb)`.
   Timer periodic(Duration d, void Function(Timer) cb);
 
+  /// Completes after [d] (like `Future.delayed`).
+  Future<void> delay(Duration d);
+
   /// A new, stopped stopwatch.
   Stopwatch stopwatch();
 }
@@ -27,6 +30,9 @@ class SystemClock implements Clock {
 
   @override
   Timer periodic(Duration d, void Function(Timer) cb) => Timer.periodic(d, cb);
+
+  @override
+  Future<void> delay(Duration d) => Future<void>.delayed(d);
 
   @override
   Stopwatch stopwatch() => Stopwatch();

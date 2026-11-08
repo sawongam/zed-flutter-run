@@ -10,7 +10,7 @@ import 'package:flutter_run/src/common/logger.dart';
 /// A [Wiring] on a throw-away directory with an empty PATH, so nothing on
 /// the real machine leaks into the test.
 class TestWiring {
-  TestWiring({Map<String, String> env = const {}})
+  TestWiring({Map<String, String> env = const {}, SignalSource? signals})
     : dir = Directory(
         // Canonical path: commands resolve it, and Windows temp paths use
         // 8.3 short names that would otherwise not compare equal.
@@ -31,6 +31,7 @@ class TestWiring {
         currentDirectory: dir.path,
       ),
       console: console,
+      signals: signals ?? const SystemSignalSource(),
       logger: Logger.silent(),
     );
   }

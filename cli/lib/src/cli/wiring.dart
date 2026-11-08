@@ -24,6 +24,7 @@ import '../sdk/process_runner.dart';
 import '../sdk/process_spec.dart';
 import '../sdk/sdk_resolver.dart';
 import '../watch/reload_on_save_watcher.dart';
+import 'signal_source.dart';
 
 /// Shared objects, built once, and the adapters between modules.
 class Wiring {
@@ -32,6 +33,7 @@ class Wiring {
     required this.console,
     required this.logger,
     this.clock = const SystemClock(),
+    this.signals = const SystemSignalSource(),
     this.processRunner = const SystemProcessRunner(),
     SdkResolver? sdkResolver,
     SessionStore? sessionStore,
@@ -107,6 +109,7 @@ class Wiring {
   final DeviceStore deviceStore;
   final BrowserOpener browserOpener;
   final Clock clock;
+  final SignalSource signals;
   final ProcessRunner processRunner;
 
   /// Resolves the Flutter SDK and returns a runner for `flutter <args>`.

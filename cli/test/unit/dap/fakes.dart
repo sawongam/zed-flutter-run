@@ -141,5 +141,12 @@ class FakeClock implements Clock {
       _async.run((_) => Timer.periodic(d, cb));
 
   @override
+  Future<void> delay(Duration d) {
+    final c = Completer<void>();
+    timer(d, c.complete);
+    return c.future;
+  }
+
+  @override
   Stopwatch stopwatch() => _async.getClock(start).stopwatch();
 }

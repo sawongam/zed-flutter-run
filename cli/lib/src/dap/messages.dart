@@ -40,9 +40,11 @@ extension type const DapMessage(DapJson raw) {
   /// client numbers are echoed back, never renumbered).
   Object? get seq => raw['seq'];
 
-  String? get type => raw['type'] as String?;
+  static String? _string(Object? v) => v is String ? v : null;
 
-  String? get command => raw['command'] as String?;
+  String? get type => _string(raw['type']);
+
+  String? get command => _string(raw['command']);
 
   Object? get requestSeq => raw['request_seq'];
 
@@ -51,7 +53,7 @@ extension type const DapMessage(DapJson raw) {
   /// True only for an explicit `success: false`.
   bool get failed => raw['success'] == false;
 
-  String? get event => raw['event'] as String?;
+  String? get event => _string(raw['event']);
 
   /// The `arguments` object, or an empty map when absent or not an object.
   Map<String, Object?> get arguments => _object(raw['arguments']);

@@ -280,10 +280,66 @@ void main() {
           final error = (response['body']! as Map)['error']! as Map;
           expect(error['showUser'], isTrue);
           expect(error['format'], contains('flutter run'));
-          expect(h.proxy.state.request, 'launch', reason: 'state is unchanged');
+          expect(
+            h.proxy.state.request,
+            'attach',
+            reason: 'the kind is recorded',
+          );
         });
       },
     );
+
+    test(
+      'a refused attach is recorded as an attach, and terminate is prompt',
+      () {
+        fakeAsync((fa) {
+          final h = Harness();
+          h.request(4, 'attach', {
+            'vmServiceUri': 'ws://127.0.0.1:PORT/TOKEN=/ws',
+          });
+          fa.flushMicrotasks();
+          expect(h.proxy.state.request, 'attach');
+          h.request(5, 'terminate');
+          fa.flushMicrotasks();
+          fa.elapse(const Duration(seconds: 1));
+          expect(
+            h.adapter.received.where((m) => (m['seq']! as int) >= injectedBase),
+            isEmpty,
+            reason: 'no injected terminate: the adapter never attached',
+          );
+          h.adapter.respond(h.adapter.lastRequest('terminate'));
+          h.adapter.event('terminated');
+          fa.elapse(const Duration(seconds: 1));
+          final answer = h.client.sentWhere('response', 'terminate');
+          expect(answer, hasLength(1));
+          expect(answer.single['request_seq'], 5);
+        });
+      },
+    );
+
+    test('a non-string command is forwarded unchanged, never dropped', () {
+      fakeAsync((fa) {
+        final h = Harness();
+        final odd = <String, Object?>{
+          'seq': 9,
+          'type': 'request',
+          'command': 5,
+        };
+        h.fromClient(odd);
+        fa.flushMicrotasks();
+        expect(h.adapter.received.single, odd);
+      });
+    });
+
+    test('a malformed adapter message is forwarded unchanged', () {
+      fakeAsync((fa) {
+        final h = Harness();
+        final odd = <String, Object?>{'seq': 9, 'type': 7, 'event': 1};
+        h.adapter.emit(odd);
+        fa.flushMicrotasks();
+        expect(h.client.sent.last, odd);
+      });
+    });
 
     test('a dart attach without any address is refused', () {
       fakeAsync((fa) {

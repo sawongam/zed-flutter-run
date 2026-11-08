@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:args/command_runner.dart';
 import 'package:flutter_run/src/cli/runner.dart';
 import 'package:flutter_run/src/common/errors.dart';
@@ -20,6 +23,21 @@ class _ThrowingCommand extends Command<int> {
   Future<int> run() async => throw error;
 }
 
+class _BlockingCommand extends Command<int> {
+  _BlockingCommand(this.gate);
+
+  final Future<int> gate;
+
+  @override
+  String get name => 'block';
+
+  @override
+  String get description => 'blocks';
+
+  @override
+  Future<int> run() => gate;
+}
+
 void main() {
   late TestWiring t;
   late FlutterRunRunner runner;
@@ -30,6 +48,25 @@ void main() {
   });
 
   tearDown(() => t.dispose());
+
+  test(
+    'a non-dap command watches SIGINT through the injected source',
+    () async {
+      final signals = FakeSignalSource();
+      final w = TestWiring(signals: signals);
+      addTearDown(w.dispose);
+      final r = FlutterRunRunner(wiring: w.wiring, flushOutput: () async {});
+      final gate = Completer<int>();
+      r.addCommand(_BlockingCommand(gate.future));
+      final done = r.runWithExit(['block']);
+      await pumpEventQueue();
+      expect(signals.isWatched(ProcessSignal.sigint), isTrue);
+      signals.raise(ProcessSignal.sigint);
+      expect(await done, ExitCodes.interrupted);
+      expect(signals.isWatched(ProcessSignal.sigint), isFalse);
+      gate.complete(0);
+    },
+  );
 
   test('version prints the tool name and version', () async {
     expect(await runner.execute(['version']), 0);

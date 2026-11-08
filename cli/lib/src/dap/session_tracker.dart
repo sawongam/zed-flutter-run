@@ -35,6 +35,13 @@ class SessionTracker {
 
   Stream<ProxyEvent> get events => _events.stream;
 
+  /// Records the kind of the client's request even when it was refused.
+  void requestSeen(String command) {
+    if (_state.request == command) return;
+    _state = _state.copyWith(request: command);
+    _emit(StateChanged(_state));
+  }
+
   /// Records the client's rewritten `launch` or `attach`.
   void launchRewritten(String command, RewriteResult result) {
     _state = _state.copyWith(request: command, deviceId: result.deviceId);

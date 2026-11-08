@@ -173,9 +173,9 @@ class DapSessionHost {
       onShutdownCleanup: _onShutdownCleanup,
       logger: logger,
     );
+    control = ProxySessionControl(proxy.hotActions, pid: pid);
     _proxyReady = true;
     if (_signalReason != null) _shutdownForSignal();
-    control = ProxySessionControl(proxy.hotActions, pid: pid);
     await _startControl();
     _events = proxy.events.listen(_onEvent);
 
