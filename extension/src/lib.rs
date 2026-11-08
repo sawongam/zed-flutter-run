@@ -104,13 +104,14 @@ impl FlutterRunExtension {
     /// Downloads, verifies and installs the binary; removes the temp file on every failure.
     fn download_and_install(
         os: Os,
+        arch: Arch,
         binary: &Path,
         binary_str: &str,
         expected: &str,
     ) -> Result<(), InstallError> {
         let version = install::PROXY_VERSION;
-        let asset = install::asset_name(version, os, host_arch())
-            .map_err(InstallError::UnsupportedPlatform)?;
+        let asset =
+            install::asset_name(version, os, arch).map_err(InstallError::UnsupportedPlatform)?;
         let dir = install::install_dir(version);
         std::fs::create_dir_all(&dir).map_err(|e| io_error(&format!("Cannot create {dir}"), &e))?;
         let names = entry_names(&dir);
@@ -166,13 +167,20 @@ impl FlutterRunExtension {
         } else {
             (None, worktree.which("flutter_run"))
         };
-        let download = download_support(os, host_arch());
+        let arch = host_arch();
+        let download = download_support(os, arch);
         let binary = install::binary_path(install::PROXY_VERSION, os);
-        let binary_str = absolute(&binary)?;
-        let cached = match &download {
-            DownloadSupport::Pinned(expected) => self.cached_binary(&binary, &binary_str, expected),
-            _ => CachedBinary::Missing,
-        };
+        // The absolute path and the cached file's hash are only needed when neither the user
+        // setting nor PATH wins; otherwise a failing current_dir() must not block a valid path.
+        let mut binary_str = String::new();
+        let mut cached = CachedBinary::Missing;
+        if install::needs_cached_binary(user.as_ref(), which_exe.as_ref(), which_plain.as_ref(), os)
+        {
+            binary_str = absolute(&binary)?;
+            if let DownloadSupport::Pinned(expected) = &download {
+                cached = self.cached_binary(&binary, &binary_str, expected);
+            }
+        }
         let plan = install::plan_install(PlanInput {
             user,
             which_exe,
@@ -192,7 +200,7 @@ impl FlutterRunExtension {
                 Ok(binary_str)
             }
             InstallPlan::Download { expected } => {
-                Self::download_and_install(os, &binary, &binary_str, &expected)?;
+                Self::download_and_install(os, arch, &binary, &binary_str, &expected)?;
                 self.verified = Some(binary_str.clone());
                 Ok(binary_str)
             }
@@ -278,6 +286,8 @@ impl zed::Extension for FlutterRunExtension {
             args: &build_task.args,
             env: &build_task.env,
             cwd: build_task.cwd.as_deref(),
+            // Zed's locator API passes no worktree, so `$ZED_WORKTREE_ROOT` cannot be expanded.
+            worktree_root: None,
         })?;
         Some(zed::DebugScenario {
             label: resolved_label,
@@ -295,6 +305,18 @@ zed::register_extension!(FlutterRunExtension);
 #[cfg(test)]
 mod tests {
     use serde_json::Value;
+
+    /// Keys handled by the Dart proxy's launch rewriter and features, not read by the extension.
+    const PROXY_KEYS: &[&str] = &[
+        "adapter",
+        "label",
+        "flutterMode",
+        "deviceId",
+        "reloadOnSave",
+        "reloadOnSaveGlobs",
+        "reloadOnSaveDebounceMs",
+        "openDevTools",
+    ];
 
     fn schema() -> Value {
         serde_json::from_str(include_str!("../debug_adapter_schemas/FlutterRun.json")).unwrap()
@@ -366,16 +388,6 @@ mod tests {
     fn keys_marked_implemented_are_the_ones_we_know_about() {
         // Keys handled by the extension (READ_KEYS) or by the Dart proxy's launch rewriter and
         // reload/DevTools features. The Dart side checks the proxy list in schema_test.dart.
-        const PROXY_KEYS: &[&str] = &[
-            "adapter",
-            "label",
-            "flutterMode",
-            "deviceId",
-            "reloadOnSave",
-            "reloadOnSaveGlobs",
-            "reloadOnSaveDebounceMs",
-            "openDevTools",
-        ];
         let schema = schema();
         let props = properties(&schema);
         for (key, prop) in props {
@@ -391,6 +403,41 @@ mod tests {
             assert_eq!(props[*key]["x-support"], "implemented", "{key}");
         }
         assert_eq!(props["platform"]["x-support"], "ignored");
+    }
+
+    #[test]
+    fn proxy_keys_match_the_dart_rewriter() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../cli/lib/src/dap/launch_rewriter.dart"
+        );
+        let Ok(source) = std::fs::read_to_string(path) else {
+            eprintln!("SKIPPED: {path} not found (crate built outside the repository)");
+            return;
+        };
+        let start = source
+            .find("ownKeys = {")
+            .expect("ownKeys not found in launch_rewriter.dart");
+        let body = &source[start..];
+        let body = &body[body.find('{').unwrap() + 1..];
+        let body = &body[..body.find('}').unwrap()];
+        let mut own: Vec<&str> = body.split('\'').skip(1).step_by(2).collect();
+        own.sort_unstable();
+        // Keys that the extension reads itself, or that are ignored, are not in PROXY_KEYS.
+        let mut expected: Vec<&str> = own
+            .iter()
+            .copied()
+            .filter(|k| !crate::proxy_args::READ_KEYS.contains(k) && *k != "platform")
+            .collect();
+        expected.sort_unstable();
+        let mut ours = PROXY_KEYS.to_vec();
+        ours.sort_unstable();
+        assert_eq!(ours, expected, "PROXY_KEYS drifted from ownKeys ({own:?})");
+        // Every ownKey must at least exist in the schema.
+        let schema = schema();
+        for key in own {
+            assert!(properties(&schema).contains_key(key), "{key} not in schema");
+        }
     }
 
     #[test]

@@ -97,6 +97,17 @@ pub fn pick_command(
     }
 }
 
+/// True when no user setting or usable PATH hit exists, so the cached binary decides.
+/// Only then are the absolute path and the cached file's hash worth computing.
+pub fn needs_cached_binary(
+    user: Option<&String>,
+    which_exe: Option<&String>,
+    which_plain: Option<&String>,
+    os: Os,
+) -> bool {
+    pick_command(user.cloned(), which_exe.cloned(), which_plain.cloned(), os).is_none()
+}
+
 /// The `.bat`/`.cmd` shim that `pick_command` ignored on Windows, if any.
 pub fn ignored_shim(
     which_exe: Option<&String>,
@@ -526,6 +537,23 @@ mod tests {
 
     fn pinned() -> DownloadSupport {
         DownloadSupport::Pinned(SUM.to_string())
+    }
+
+    #[test]
+    fn cached_binary_is_only_inspected_when_nothing_else_wins() {
+        let some = |s: &str| Some(s.to_string());
+        let (user, path) = (some("/u/flutter_run"), some("/bin/flutter_run"));
+        assert!(!needs_cached_binary(user.as_ref(), None, None, Os::Linux));
+        assert!(!needs_cached_binary(None, None, path.as_ref(), Os::Linux));
+        assert!(needs_cached_binary(None, None, None, Os::Linux));
+        assert!(needs_cached_binary(
+            some("").as_ref(),
+            None,
+            None,
+            Os::Linux
+        ));
+        let shim = some("C:\\x\\flutter_run.bat");
+        assert!(needs_cached_binary(None, None, shim.as_ref(), Os::Windows));
     }
 
     #[test]

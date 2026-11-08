@@ -17,6 +17,8 @@ pub struct TaskInput<'a> {
     pub args: &'a [String],
     pub env: &'a [(String, String)],
     pub cwd: Option<&'a str>,
+    /// Worktree root, when the caller knows it. Zed's locator API does not pass one today.
+    pub worktree_root: Option<&'a str>,
 }
 
 /// Returns the JSON configuration for the scenario, or `None` when the task is not ours.
@@ -37,9 +39,22 @@ pub fn scenario_config(task: &TaskInput) -> Option<Value> {
         "dart" => parse_dart(rest)?,
         _ => return None,
     };
-    parsed.cwd = task.cwd.map(str::to_string);
+    parsed.cwd = task.cwd.and_then(|cwd| expand_cwd(cwd, task.worktree_root));
     parsed.env = task.env.to_vec();
     Some(parsed.into_config())
+}
+
+/// Zed may not substitute `$ZED_*` variables in locator scenarios, so `$ZED_WORKTREE_ROOT` is
+/// replaced here when the root is known. A cwd that still holds a `$ZED_` variable is dropped,
+/// so the launch falls back to the worktree root. ADR 0009.
+fn expand_cwd(cwd: &str, root: Option<&str>) -> Option<String> {
+    let mut out = cwd.to_string();
+    if let Some(root) = root.filter(|r| !r.is_empty()) {
+        out = out
+            .replace("${ZED_WORKTREE_ROOT}", root)
+            .replace("$ZED_WORKTREE_ROOT", root);
+    }
+    (!out.contains("$ZED_") && !out.contains("${ZED_")).then_some(out)
 }
 
 /// Command and args as one token list. A command that holds spaces (`flutter run`) is split
@@ -133,6 +148,8 @@ fn parse_flutter_run(rest: &[String]) -> Option<Parsed> {
         return None;
     }
     let mut out = Parsed::default();
+    let mut target_flag = false;
+    let mut positional: Option<String> = None;
     let mut it = rest.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -141,8 +158,11 @@ fn parse_flutter_run(rest: &[String]) -> Option<Parsed> {
             }
             // `--machine` takes over stdout for its own protocol; the debug adapter cannot share it.
             "--machine" => return None,
-            "-d" | "--device-id" => out.device_id = Some(non_empty(it.next()?)?),
-            "-t" | "--target" => out.program = Some(non_empty(it.next()?)?),
+            "-d" | "--device-id" => out.device_id = Some(flag_value(it.next())?),
+            "-t" | "--target" => {
+                out.program = Some(flag_value(it.next())?);
+                target_flag = true;
+            }
             "--profile" => out.mode = Some("profile"),
             "--release" => out.mode = Some("release"),
             "--debug" => out.mode = Some("debug"),
@@ -151,17 +171,37 @@ fn parse_flutter_run(rest: &[String]) -> Option<Parsed> {
                     out.device_id = Some(non_empty(value)?);
                 } else if let Some(value) = other.strip_prefix("--target=") {
                     out.program = Some(non_empty(value)?);
+                    target_flag = true;
                 } else if let Some(value) = short_value(other, 'd') {
                     out.device_id = Some(non_empty(value)?);
                 } else if let Some(value) = short_value(other, 't') {
                     out.program = Some(non_empty(value)?);
+                    target_flag = true;
+                } else if !other.starts_with('-') && is_dart_file(other) {
+                    // `flutter run lib/foo.dart`: a second target would be ambiguous.
+                    if positional.replace(other.to_string()).is_some() {
+                        return None;
+                    }
                 } else {
                     out.tool_args.push(other.to_string());
                 }
             }
         }
     }
+    if let Some(file) = positional {
+        if target_flag {
+            return None;
+        }
+        out.program = Some(file);
+    }
     Some(out)
+}
+
+/// The value of a flag such as `-d`. A following flag (`-d --release`) means the value is
+/// missing, and the whole task is then not ours rather than guessed.
+fn flag_value(next: Option<&String>) -> Option<String> {
+    let value = non_empty(next?)?;
+    (!value.starts_with('-')).then_some(value)
 }
 
 /// `-dlinux` style: a single dash, the letter, then the value.
@@ -233,6 +273,7 @@ mod tests {
             args: &args,
             env: &env,
             cwd,
+            worktree_root: None,
         })
     }
 
@@ -336,13 +377,87 @@ mod tests {
             "flutter",
             &["run"],
             &[("A", "1"), ("B", "two words")],
-            Some("$ZED_WORKTREE_ROOT/app"),
+            Some("/w/app"),
         )
         .unwrap();
-        assert_eq!(got["cwd"], "$ZED_WORKTREE_ROOT/app");
+        assert_eq!(got["cwd"], "/w/app");
         assert_eq!(got["env"], json!({"A":"1","B":"two words"}));
         let bare = run("flutter", &["run"]).unwrap();
         assert!(bare.get("cwd").is_none() && bare.get("env").is_none());
+    }
+
+    #[test]
+    fn flag_followed_by_flag_is_not_ours() {
+        for args in [
+            vec!["run", "-d", "--release"],
+            vec!["run", "--device-id", "--release"],
+            vec!["run", "-t", "--profile"],
+            vec!["run", "--target", "-d", "linux"],
+            vec!["run", "-d", "--", "x"],
+        ] {
+            assert_eq!(run("flutter", &args), None, "{args:?}");
+        }
+    }
+
+    #[test]
+    fn positional_dart_file_is_the_program() {
+        let got = run("flutter", &["run", "lib/foo.dart", "-d", "linux"]).unwrap();
+        assert_eq!(got["program"], "lib/foo.dart");
+        assert!(got.get("toolArgs").is_none());
+        let got = run("flutter", &["run", "-d", "linux", "lib/foo.dart"]).unwrap();
+        assert_eq!(got["program"], "lib/foo.dart");
+        assert!(got.get("toolArgs").is_none());
+        // after `--` it belongs to the app
+        let got = run("flutter", &["run", "--", "x.dart"]).unwrap();
+        assert!(got.get("program").is_none());
+        assert_eq!(got["args"], json!(["x.dart"]));
+        for args in [
+            vec!["run", "-t", "a.dart", "b.dart"],
+            vec!["run", "b.dart", "--target=a.dart"],
+            vec!["run", "a.dart", "b.dart"],
+        ] {
+            assert_eq!(run("flutter", &args), None, "{args:?}");
+        }
+    }
+
+    #[test]
+    fn zed_variables_in_cwd() {
+        let with_root = |cwd, root| {
+            scenario_config(&TaskInput {
+                command: "flutter",
+                args: &["run".to_string()],
+                env: &[],
+                cwd,
+                worktree_root: root,
+            })
+            .unwrap()
+        };
+        let got = with_root(Some("$ZED_WORKTREE_ROOT/app"), Some("/w"));
+        assert_eq!(got["cwd"], "/w/app");
+        let got = with_root(Some("${ZED_WORKTREE_ROOT}/app"), Some("/w"));
+        assert_eq!(got["cwd"], "/w/app");
+        // no root known: dropped
+        assert!(
+            with_root(Some("$ZED_WORKTREE_ROOT/app"), None)
+                .get("cwd")
+                .is_none()
+        );
+        // other Zed variables are never kept
+        assert!(
+            with_root(Some("$ZED_FILE/.."), Some("/w"))
+                .get("cwd")
+                .is_none()
+        );
+        assert!(
+            with_root(Some("${ZED_DIRNAME}"), Some("/w"))
+                .get("cwd")
+                .is_none()
+        );
+        assert_eq!(with_root(Some("/p"), None)["cwd"], "/p");
+        assert_eq!(
+            run_with("flutter", &["run"], &[], Some("$ZED_WORKTREE_ROOT")),
+            Some(json!({"request":"launch","type":"flutter"}))
+        );
     }
 
     #[test]

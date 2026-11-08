@@ -227,19 +227,33 @@ pub struct LaunchSpec<'a> {
     pub envs: &'a [(String, String)],
 }
 
-/// Dart programs outside a Flutter app's `lib/` (for example `bin/tool.dart`, `test/x_test.dart`)
-/// cannot be started with `flutter run`; they need the plain Dart debug adapter.
-fn kind_for_program(program: &str) -> Kind {
+/// A `.dart` program under `bin/` or `tool/` of the project is a plain Dart script and needs the
+/// Dart debug adapter. Everything else (`lib/`, `test/`, `integration_test/`, a root `main.dart`)
+/// stays Flutter, because a wrong `dart` breaks Flutter apps and integration tests while a wrong
+/// `flutter` only fails loudly. The path is made relative to `cwd` when both are absolute; an
+/// absolute path that cannot be related to a project (`/var/lib/x/bin/a.dart`) stays Flutter.
+fn kind_for_program(program: &str, cwd: Option<&str>) -> Kind {
     if !program.to_ascii_lowercase().ends_with(".dart") {
         return Kind::Flutter;
     }
-    let normalized = program.replace('\\', "/");
-    let mut dirs: Vec<&str> = normalized.split('/').collect();
-    dirs.pop(); // the file name
-    // The first of lib/bin/test (from the left) decides; none at all means "not under lib/".
-    match dirs.iter().find(|d| matches!(**d, "lib" | "bin" | "test")) {
-        Some(&"lib") => Kind::Flutter,
-        _ => Kind::Dart,
+    let program = program.replace('\\', "/");
+    let relative = if is_absolute(&program) {
+        let root = cwd.map(|c| c.replace('\\', "/")).unwrap_or_default();
+        let root = root.trim_end_matches('/');
+        match program.strip_prefix(root).filter(|_| !root.is_empty()) {
+            Some(rest) if rest.starts_with('/') => rest.trim_start_matches('/').to_string(),
+            _ => return Kind::Flutter,
+        }
+    } else {
+        program
+    };
+    let mut parts = relative.split('/').filter(|p| !p.is_empty() && *p != ".");
+    match (parts.next(), parts.next()) {
+        // needs a file below the directory, so `bin.dart` is not `bin/`
+        (Some(dir), Some(_)) if matches!(dir.to_ascii_lowercase().as_str(), "bin" | "tool") => {
+            Kind::Dart
+        }
+        _ => Kind::Flutter,
     }
 }
 
@@ -265,7 +279,10 @@ pub fn config_to_scenario(
                 );
         }
         config.insert("request".into(), json!("launch"));
-        config.insert("type".into(), json!(kind_for_program(program).as_str()));
+        config.insert(
+            "type".into(),
+            json!(kind_for_program(program, l.cwd).as_str()),
+        );
         config.insert("program".into(), json!(program));
         if let Some(cwd) = l.cwd {
             config.insert("cwd".into(), json!(cwd));
@@ -499,18 +516,22 @@ mod tests {
         );
     }
 
-    fn launch_type(program: &str) -> Result<Value, String> {
+    fn launch_type_in(program: &str, cwd: Option<&str>) -> Result<Value, String> {
         config_to_scenario(
             "L",
             Some(LaunchSpec {
                 program,
-                cwd: None,
+                cwd,
                 args: &[],
                 envs: &[],
             }),
             None,
         )
         .map(|s| s.config["type"].clone())
+    }
+
+    fn launch_type(program: &str) -> Result<Value, String> {
+        launch_type_in(program, None)
     }
 
     #[test]
@@ -523,22 +544,49 @@ mod tests {
             "example/lib/main.dart",
             "lib/bin/x.dart",
             "main", // not a .dart file
+            "integration_test/app_test.dart",
+            "test/a_test.dart",
+            "main.dart",
+            "bin.dart",
+            "example/bin/x.dart", // only the project-level bin/ counts
+            "/var/lib/x/bin/tool.dart",
+            "/usr/lib/foo/main.dart",
+            "/abs/pkg/bin/tool.dart", // absolute without a cwd: cannot tell
         ] {
             assert_eq!(launch_type(program), Ok(json!("flutter")), "{program}");
         }
         for program in [
             "bin/tool.dart",
             "bin\\tool.dart",
-            "test/a_test.dart",
-            "/abs/pkg/bin/tool.dart",
+            "./bin/tool.dart",
             "tool/gen.dart",
-            "integration_test/app_test.dart",
-            "main.dart",
             "BIN/Tool.DART",
-            "test/lib/x.dart",
+            "tool/lib/x.dart",
+            "bin/src/x.dart",
         ] {
             assert_eq!(launch_type(program), Ok(json!("dart")), "{program}");
         }
+    }
+
+    #[test]
+    fn scenario_type_uses_cwd_to_relate_absolute_programs() {
+        let dart = |p, c| launch_type_in(p, Some(c));
+        assert_eq!(dart("/w/app/bin/t.dart", "/w/app"), Ok(json!("dart")));
+        assert_eq!(dart("/w/app/bin/t.dart", "/w/app/"), Ok(json!("dart")));
+        assert_eq!(dart("C:\\w\\tool\\g.dart", "C:\\w"), Ok(json!("dart")));
+        assert_eq!(dart("/w/app/lib/main.dart", "/w/app"), Ok(json!("flutter")));
+        assert_eq!(dart("/w/app/main.dart", "/w/app"), Ok(json!("flutter")));
+        assert_eq!(
+            dart("/w/app/integration_test/a.dart", "/w/app"),
+            Ok(json!("flutter"))
+        );
+        // outside the cwd, or a sibling that merely shares the prefix
+        assert_eq!(dart("/other/bin/t.dart", "/w/app"), Ok(json!("flutter")));
+        assert_eq!(dart("/w/app2/bin/t.dart", "/w/app"), Ok(json!("flutter")));
+        // under a system lib directory even with a cwd
+        assert_eq!(dart("/var/lib/x/bin/t.dart", "/w"), Ok(json!("flutter")));
+        // relative program with a cwd
+        assert_eq!(dart("bin/t.dart", "/w/app"), Ok(json!("dart")));
     }
 
     #[test]

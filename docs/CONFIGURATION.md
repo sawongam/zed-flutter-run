@@ -84,7 +84,7 @@ Start the app yourself with `flutter run -d <device>`, copy the VM service URL i
 
 ### Debugging from tasks
 
-The extension has a debug locator ([ADR 0009](decisions/0009-debug-locator.md)) that turns a Zed task into a `FlutterRun` scenario, so a task that already runs your app can be debugged without writing a `debug.json` entry. It matches only tasks that start an app: `flutter run`, `fvm flutter run`, `puro flutter run`, `dart run <file>.dart` and `dart <file>.dart`. Other tasks (`flutter build`, `flutter test`, `dart pub get`) are left alone.
+The extension has a debug locator ([ADR 0009](decisions/0009-debug-locator.md)) that turns a Zed task into a `FlutterRun` scenario, so a task that already runs your app can be debugged without writing a `debug.json` entry. It matches only tasks that start an app: `flutter run`, `fvm flutter run`, `puro flutter run`, `dart run <file>.dart` and `dart <file>.dart`. A positional file (`flutter run lib/foo.dart`) is treated like `-t`. A `$ZED_*` variable in the task's `cwd` is dropped, so the launch uses the worktree root. Other tasks (`flutter build`, `flutter test`, `dart pub get`) are left alone.
 
 | Task argument | Scenario key |
 |---|---|

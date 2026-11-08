@@ -22,18 +22,20 @@ ADR 0006 D4 deferred the locator because it "only works when the user sets `lang
   |---|---|
   | `-d X`, `--device-id X`, `--device-id=X`, `-dX` | `deviceId` |
   | `--profile`, `--release`, `--debug` | `flutterMode` |
-  | `-t X`, `--target X`, `--target=X`, `-tX` | `program` |
+  | `-t X`, `--target X`, `--target=X`, `-tX`, or a positional `lib/foo.dart` | `program` |
   | anything else (`--flavor dev`, `--dart-define=A=1`, `-v`) | `toolArgs`, in order |
   | after a bare `--` | `args` (for the app) |
   | `fvm` prefix | `useFvm: true` |
-  | task `env`, `cwd` | `env`, `cwd` |
+  | task `env`, `cwd` | `env`, `cwd` (see below) |
 
-  Not matched (return `None`): other subcommands, global flags before `run`, `flutter run --machine` (it owns stdout), flags missing their value.
+  Not matched (return `None`): other subcommands, global flags before `run`, `flutter run --machine` (it owns stdout), flags missing their value (including a value flag followed by another flag, such as `-d --release`; never guessed), and a positional `.dart` file together with `-t`/`--target` (two targets).
 - `dart run <file>.dart [args]` and `dart <file>.dart [args]` give `type: "dart"` with `program` and `args`; flags before the file go to `toolArgs`. `dart run <package>`, `dart test`, `dart pub ...` return `None`.
 - A command that contains spaces is split on whitespace only if there are no separate args and no quotes. Otherwise it is treated as a path and not matched.
 - The scenario has `build: None` and the task's resolved label.
 
-Related change in the same batch: the modal `dap_config_to_scenario` now picks `type: "dart"` for a `.dart` program whose first `lib`/`bin`/`test` folder is not `lib` (or that has none), rejects an empty launch program with a clear error, and documents that a modal attach scenario still needs `vmServiceUri`. The JSON schema requires `vmServiceUri` or `vmServiceInfoFile` for a `type: dart` attach. A Flutter attach without one is allowed: it waits for the app to start, and the proxy warns after 15 s. The proxy rejects the `init` placeholder URI (`PORT/TOKEN`) with a clear error.
+- `$ZED_*` in `cwd`: it is unverified whether Zed substitutes them for locator scenarios, and the locator API passes no worktree root. The locator replaces `$ZED_WORKTREE_ROOT` / `${ZED_WORKTREE_ROOT}` only when a root is supplied (currently never) and drops `cwd` when any `$ZED_` / `${ZED_` remains, so the launch falls back to the worktree root.
+
+Related change in the same batch: the modal `dap_config_to_scenario` picks `type: "dart"` only for a `.dart` program whose first path component (relative to `cwd` when the path is absolute and inside it) is `bin` or `tool`; everything else, including `lib/`, `test/`, `integration_test/`, a root `main.dart` and absolute paths it cannot relate to a project, is `flutter`, rejects an empty launch program with a clear error, and documents that a modal attach scenario still needs `vmServiceUri`. The JSON schema requires `vmServiceUri` or `vmServiceInfoFile` for a `type: dart` attach. A Flutter attach without one is allowed: it waits for the app to start, and the proxy warns after 15 s. The proxy rejects the `init` placeholder URI (`PORT/TOKEN`) with a clear error.
 
 ## Consequences
 - Users who set `"languages": {"Dart": {"debuggers": ["FlutterRun"]}}` see a debug entry next to their `flutter run` tasks. Without that setting nothing changes.
