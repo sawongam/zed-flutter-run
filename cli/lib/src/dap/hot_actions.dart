@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../common/clock.dart';
 import '../common/json_types.dart';
 import 'messages.dart';
 import 'notices.dart';
@@ -64,13 +65,15 @@ class HotActions {
     this._injector, {
     this.timeout = const Duration(seconds: 120),
     this.waitingNoticeAfter = const Duration(seconds: 3),
-  });
+    Clock clock = const SystemClock(),
+  }) : _clock = clock;
 
   static const Duration _lateLimit = Duration(minutes: 10);
 
   final RequestInjector _injector;
   final Duration timeout;
   final Duration waitingNoticeAfter;
+  final Clock _clock;
 
   _Flight? _current;
   bool _clientRestart = false;
@@ -142,7 +145,7 @@ class HotActions {
   Future<HotResult> _run(_Action action, String reason) {
     final flight = _Flight(action);
     _current = flight;
-    final watch = Stopwatch()..start();
+    final watch = _clock.stopwatch()..start();
     final isReload = action == _Action.reload;
     final command = isReload ? 'hotReload' : 'hotRestart';
     final noun = isReload ? 'Reload' : 'Restart';
@@ -161,7 +164,7 @@ class HotActions {
       if (!flight.result.isCompleted) flight.result.complete(result);
     }
 
-    waitingTimer = Timer(waitingNoticeAfter, () {
+    waitingTimer = _clock.timer(waitingNoticeAfter, () {
       if (flight.result.isCompleted) return;
       _injector.notice('$noun is waiting for the debugger to resume.');
     });
@@ -169,7 +172,7 @@ class HotActions {
     // breakpoint); the late limit in the injector still bounds it.
     final noTimeout = isReload && reason == 'save';
     if (!noTimeout) {
-      timeoutTimer = Timer(timeout, () {
+      timeoutTimer = _clock.timer(timeout, () {
         if (flight.result.isCompleted) return;
         flight.timedOut = true;
         final seconds = timeout.inSeconds;
@@ -187,7 +190,7 @@ class HotActions {
         );
       });
     }
-    lateTimer = Timer(_lateLimit, finish);
+    lateTimer = _clock.timer(_lateLimit, finish);
 
     Future<DapJson> pending;
     try {

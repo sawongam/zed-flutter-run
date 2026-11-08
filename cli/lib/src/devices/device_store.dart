@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../common/clock.dart';
 import '../common/files.dart';
 import '../common/host_environment.dart';
 import '../common/json_types.dart';
@@ -17,7 +18,7 @@ class SavedDevice {
   });
 
   /// Throws [FormatException] when a required field is missing.
-  factory SavedDevice.fromJson(Json j) {
+  factory SavedDevice.fromJson(Json j, {Clock clock = const SystemClock()}) {
     final id = j['deviceId'];
     final name = j['name'];
     final platform = j['platform'];
@@ -29,7 +30,7 @@ class SavedDevice {
       deviceId: id,
       name: name is String ? name : id,
       platform: platform is String ? platform : 'unknown',
-      savedAt: (at is String ? DateTime.tryParse(at) : null) ?? DateTime.now(),
+      savedAt: (at is String ? DateTime.tryParse(at) : null) ?? clock.now(),
     );
   }
 
@@ -48,13 +49,15 @@ class SavedDevice {
 
 /// Saved device per project, in the per-user state directory (ADR 0006 D7).
 class DeviceStore {
-  DeviceStore(this._env, {Logger? logger})
-    : _logger = logger ?? Logger.silent();
+  DeviceStore(this._env, {Logger? logger, Clock clock = const SystemClock()})
+    : _logger = logger ?? Logger.silent(),
+      _clock = clock;
 
   static const int fileVersion = 1;
 
   final HostEnvironment _env;
   final Logger _logger;
+  final Clock _clock;
 
   /// `<stateBaseDirectory>/devices/<projectRootHash>.json`.
   String filePath(String projectRoot) => _env.pathContext.join(
@@ -84,7 +87,7 @@ class DeviceStore {
         _logger.debug('Ignoring device file ${file.path}: other project.');
         return null;
       }
-      return SavedDevice.fromJson(decoded);
+      return SavedDevice.fromJson(decoded, clock: _clock);
     } on Object catch (e) {
       _logger.debug('Ignoring unreadable device file: $e');
       return null;

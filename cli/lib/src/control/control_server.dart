@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../common/clock.dart';
 import '../common/json_types.dart';
 import '../common/logger.dart';
 import '../common/version.dart';
@@ -31,6 +32,7 @@ class ControlServer {
     this._control,
     this._logger,
     this._requestLineTimeout,
+    this._clock,
     this.token,
   );
 
@@ -52,6 +54,7 @@ class ControlServer {
     Logger? logger,
     Duration requestLineTimeout = const Duration(seconds: 3),
     String? tokenOverrideForTests,
+    Clock clock = const SystemClock(),
   }) async {
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final instance = ControlServer._(
@@ -59,6 +62,7 @@ class ControlServer {
       control,
       logger ?? Logger.silent(),
       requestLineTimeout,
+      clock,
       tokenOverrideForTests ?? _generateToken(),
     );
     server.listen(instance._accept, onError: (Object _) {});
@@ -69,6 +73,7 @@ class ControlServer {
   final SessionControl _control;
   final Logger _logger;
   final Duration _requestLineTimeout;
+  final Clock _clock;
   final Set<_Connection> _connections = {};
   bool _closed = false;
 
@@ -179,7 +184,7 @@ class _Connection {
   bool _destroyed = false;
 
   void start() {
-    _lineTimer = Timer(_owner._requestLineTimeout, () {
+    _lineTimer = _owner._clock.timer(_owner._requestLineTimeout, () {
       _owner._logger.debug('control: closing a connection that sent no line');
       destroy();
     });
@@ -344,7 +349,7 @@ class _Connection {
       await _socket.flush();
       // Half-close and keep draining, so a client that is still sending does
       // not get a reset that would discard our answer.
-      _graceTimer = Timer(const Duration(seconds: 2), destroy);
+      _graceTimer = _owner._clock.timer(const Duration(seconds: 2), destroy);
       await _socket.close();
     } on Object {
       destroy();

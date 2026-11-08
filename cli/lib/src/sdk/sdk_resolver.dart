@@ -17,8 +17,8 @@ class FlutterSdk {
     required this.flutterExecutable,
     required this.sourceStep,
     this.bundledDartExecutable,
-    SdkFileSystem fileSystem = const LocalSdkFileSystem(),
-  }) : _fs = fileSystem;
+    SdkFileSystem? fileSystem,
+  }) : _fs = fileSystem ?? LocalSdkFileSystem();
 
   /// Null for shims that cannot be traced back to an SDK folder.
   final String? root;
@@ -96,12 +96,9 @@ class SdkResolution {
 final RegExp _versionPattern = RegExp(r'^[A-Za-z0-9_@\-][A-Za-z0-9._@\-]*$');
 
 class SdkResolver {
-  SdkResolver(
-    this.env, {
-    Logger? logger,
-    SdkFileSystem fileSystem = const LocalSdkFileSystem(),
-  }) : _logger = logger ?? Logger.silent(),
-       _fs = fileSystem;
+  SdkResolver(this.env, {Logger? logger, SdkFileSystem? fileSystem})
+    : _logger = logger ?? Logger.silent(),
+      _fs = fileSystem ?? LocalSdkFileSystem(env);
 
   final HostEnvironment env;
   final Logger _logger;

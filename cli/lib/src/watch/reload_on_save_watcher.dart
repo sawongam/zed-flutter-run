@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:watcher/watcher.dart';
 
+import '../common/clock.dart';
 import '../common/host_environment.dart';
 import '../common/logger.dart';
 import '../common/paths.dart';
@@ -41,6 +42,7 @@ class ReloadOnSaveWatcher {
     required void Function(String text, {required bool isError}) notice,
     Logger? logger,
     Stream<WatchEvent> Function(String directory)? watcherFactory,
+    Clock clock = const SystemClock(),
   }) : _projectRoot = projectRoot,
        _isDartProgram = isDartProgram,
        _config = config,
@@ -48,7 +50,8 @@ class ReloadOnSaveWatcher {
        _reload = reload,
        _notice = notice,
        _logger = logger ?? Logger.silent(),
-       _watcherFactory = watcherFactory;
+       _watcherFactory = watcherFactory,
+       _clock = clock;
 
   final String _projectRoot;
   final bool _isDartProgram;
@@ -58,6 +61,7 @@ class ReloadOnSaveWatcher {
   final void Function(String text, {required bool isError}) _notice;
   final Logger _logger;
   final Stream<WatchEvent> Function(String directory)? _watcherFactory;
+  final Clock _clock;
 
   ContentHashTracker _hashes = ContentHashTracker();
   final List<StreamSubscription<WatchEvent>> _subscriptions = [];
@@ -118,6 +122,7 @@ class ReloadOnSaveWatcher {
 
     _coalescer = ReloadCoalescer(
       debounce: _config.debounce,
+      clock: _clock,
       reload: _runReload,
       onError: (e, st) {
         _logger.error('Reload on save failed', e, st);

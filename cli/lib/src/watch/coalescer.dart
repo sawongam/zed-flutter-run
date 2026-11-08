@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../common/clock.dart';
+
 /// Outcome of one reload attempt.
 enum ReloadResult { done, busy }
 
@@ -9,13 +11,16 @@ class ReloadCoalescer {
     required Duration debounce,
     required Future<ReloadResult> Function() reload,
     void Function(Object, StackTrace)? onError,
+    Clock clock = const SystemClock(),
   }) : _debounce = debounce,
        _reload = reload,
-       _onError = onError;
+       _onError = onError,
+       _clock = clock;
 
   final Duration _debounce;
   final Future<ReloadResult> Function() _reload;
   final void Function(Object, StackTrace)? _onError;
+  final Clock _clock;
 
   static const Duration _maxBusyDelay = Duration(seconds: 2);
 
@@ -41,7 +46,7 @@ class ReloadCoalescer {
 
   void _arm(Duration delay) {
     _timer?.cancel();
-    _timer = Timer(delay, () {
+    _timer = _clock.timer(delay, () {
       _timer = null;
       if (_disposed || _inFlight) return;
       unawaited(_run());

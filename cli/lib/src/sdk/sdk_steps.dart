@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../common/host_environment.dart';
+
 /// Outcome of one SDK resolution step.
 enum StepOutcome { skipped, notFound, invalid, found }
 
@@ -47,7 +49,10 @@ abstract class SdkFileSystem {
 }
 
 class LocalSdkFileSystem implements SdkFileSystem {
-  const LocalSdkFileSystem();
+  LocalSdkFileSystem([HostEnvironment? env])
+    : _env = env ?? HostEnvironment.system();
+
+  final HostEnvironment _env;
 
   @override
   bool isFile(String path) => FileSystemEntity.isFileSync(path);
@@ -65,7 +70,7 @@ class LocalSdkFileSystem implements SdkFileSystem {
     try {
       final stat = FileStat.statSync(path);
       if (stat.type != FileSystemEntityType.file) return false;
-      if (Platform.isWindows) return true;
+      if (_env.isWindows) return true;
       return (stat.mode & 0x49) != 0;
     } on FileSystemException {
       return false;

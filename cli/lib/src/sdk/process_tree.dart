@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import '../common/clock.dart';
 import '../common/host_environment.dart';
 
 /// One row of the process table.
@@ -352,7 +353,7 @@ bool isSharedDaemonCommand(String command) => _sharedDaemon.hasMatch(command);
 
 typedef ProcessTableReader = Future<ProcessTable> Function();
 typedef SignalSender = bool Function(int pid, ProcessSignal signal);
-typedef ProcessRunner =
+typedef ProcessResultRunner =
     Future<ProcessResult> Function(String executable, List<String> arguments);
 
 /// Terminates [rootPid] and [snapshot] (pids that were its descendants).
@@ -372,7 +373,8 @@ Future<void> killTree(
   Map<int, String> startTimes = const <int, String>{},
   ProcessTableReader? readTable,
   SignalSender? sendSignal,
-  ProcessRunner? runProcess,
+  ProcessResultRunner? runProcess,
+  Clock clock = const SystemClock(),
 }) async {
   final read = readTable ?? () => readProcessTable(env);
   final send = sendSignal ?? ((pid, signal) => Process.killPid(pid, signal));
@@ -438,12 +440,12 @@ Future<void> killTree(
     send(pid, ProcessSignal.sigterm);
   }
 
-  final deadline = DateTime.now().add(grace);
+  final deadline = clock.now().add(grace);
   while (true) {
     await Future<void>.delayed(const Duration(milliseconds: 50));
     alive = await eligible();
     if (alive.isEmpty) return;
-    if (!DateTime.now().isBefore(deadline)) break;
+    if (!clock.now().isBefore(deadline)) break;
   }
   for (final pid in alive) {
     send(pid, ProcessSignal.sigkill);

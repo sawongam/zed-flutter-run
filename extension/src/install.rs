@@ -3,7 +3,7 @@
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
-pub const PROXY_VERSION: &str = "0.1.0";
+pub const PROXY_VERSION: &str = "0.1.0"; // x-release-please-version
 pub const REPO: &str = "sawongam/zed-flutter-run";
 /// Flipped by the release steps once `dart pub global activate flutter_run` works.
 pub const PUBLISHED_ON_PUB: bool = false;

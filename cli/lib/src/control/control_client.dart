@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../common/host_environment.dart';
 import '../common/json_types.dart';
 import '../common/version.dart';
 import 'control_protocol.dart';
@@ -83,15 +84,19 @@ Future<Socket> _defaultConnector(String host, int port, Duration timeout) =>
 /// Windows can take 2 s or more to report a refused loopback connection (the
 /// SYN is retried), so a 2 s limit would turn "refused" into a timeout and
 /// keep stale session files forever.
-final Duration defaultConnectTimeout = Platform.isWindows
-    ? const Duration(seconds: 6)
-    : const Duration(seconds: 2);
+Duration defaultConnectTimeoutFor(HostEnvironment env) =>
+    env.isWindows ? const Duration(seconds: 6) : const Duration(seconds: 2);
 
 /// Talks to a session's [ControlServer] over loopback.
 class ControlClient {
-  ControlClient({Duration? connectTimeout, SocketConnector? connector})
-    : _connectTimeout = connectTimeout ?? defaultConnectTimeout,
-      _connector = connector ?? _defaultConnector;
+  ControlClient({
+    Duration? connectTimeout,
+    SocketConnector? connector,
+    HostEnvironment? env,
+  }) : _connectTimeout =
+           connectTimeout ??
+           defaultConnectTimeoutFor(env ?? HostEnvironment.system()),
+       _connector = connector ?? _defaultConnector;
 
   final Duration _connectTimeout;
   final SocketConnector _connector;

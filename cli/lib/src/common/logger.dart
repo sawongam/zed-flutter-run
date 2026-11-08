@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'host_environment.dart';
+
 enum LogLevel { error, warn, info, debug, trace }
 
 /// Diagnostic logger. Writes to stderr (or an injected sink) and optionally a
@@ -14,9 +16,11 @@ class Logger {
     IOSink? stderrSink,
     String? logFilePath,
     DateTime Function()? clock,
+    HostEnvironment? env,
   }) : _level = level,
        _clock = clock ?? DateTime.now,
-       _stderr = stderrSink ?? stderr {
+       _stderr = stderrSink ?? stderr,
+       _env = env ?? HostEnvironment.system() {
     if (logFilePath != null && logFilePath.isNotEmpty) {
       final problem = _openLogFile(logFilePath);
       if (problem != null) {
@@ -30,7 +34,9 @@ class Logger {
     }
   }
 
-  Logger._base(this._level) : _clock = DateTime.now;
+  Logger._base(this._level)
+    : _clock = DateTime.now,
+      _env = HostEnvironment.system();
 
   factory Logger.silent() = _SilentLogger;
 
@@ -42,6 +48,7 @@ class Logger {
 
   final LogLevel _level;
   final DateTime Function() _clock;
+  final HostEnvironment _env;
   IOSink? _stderr;
   IOSink? _file;
 
@@ -63,7 +70,7 @@ class Logger {
         return 'it is not a regular file.';
       }
       if (type == FileSystemEntityType.notFound) file.createSync();
-      if (!Platform.isWindows) {
+      if (!_env.isWindows) {
         final r = Process.runSync('/bin/chmod', ['600', path]);
         if (r.exitCode != 0) {
           return 'it could not be restricted to your user.';

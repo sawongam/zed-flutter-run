@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:args/command_runner.dart';
 
+import '../common/clock.dart';
 import '../common/console.dart';
 import '../common/errors.dart';
 import '../common/global_options.dart';
@@ -22,11 +23,13 @@ abstract class HotActionCommand extends Command<int> {
     required HostEnvironment env,
     required Console console,
     required Duration waitingNoticeAfter,
+    Clock clock = const SystemClock(),
   }) : _store = store,
        _client = client,
        _env = env,
        _console = console,
-       _waitingNoticeAfter = waitingNoticeAfter {
+       _waitingNoticeAfter = waitingNoticeAfter,
+       _clock = clock {
     GlobalOptions.addTo(argParser);
     argParser.addOption(
       'timeout',
@@ -41,6 +44,7 @@ abstract class HotActionCommand extends Command<int> {
   final HostEnvironment _env;
   final Console _console;
   final Duration _waitingNoticeAfter;
+  final Clock _clock;
 
   /// Control command on the wire.
   String get controlCommand;
@@ -110,7 +114,7 @@ abstract class HotActionCommand extends Command<int> {
     }
     if (eligible.isEmpty) return ExitCodes.sessionError;
 
-    final waiting = Timer(_waitingNoticeAfter, () {
+    final waiting = _clock.timer(_waitingNoticeAfter, () {
       _console.err(
         'Waiting... the app may be paused at a breakpoint (Ctrl+C to stop '
         'waiting).',

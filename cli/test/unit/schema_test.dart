@@ -63,14 +63,7 @@ void main() {
         final scenarios = debugScenarios(project);
         expect(scenarios, isNotEmpty);
         for (final template in scenarios) {
-          // The generated attach entry is a template: the user must still add
-          // the VM service address, which the schema requires (see ADR 0009).
-          final scenario = template['request'] == 'attach'
-              ? {...template, 'vmServiceUri': 'http://127.0.0.1:1/abc=/'}
-              : template;
-          if (template['request'] == 'attach') {
-            expect(schema.validate(template).isValid, isFalse);
-          }
+          final scenario = template;
           final result = schema.validate(scenario);
           expect(
             result.isValid,
