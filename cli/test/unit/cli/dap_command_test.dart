@@ -307,14 +307,7 @@ void main() {
       if (!Platform.isWindows) ProcessSignal.sighup,
     ]) {
       test('${signal.name} runs the same cleanup as a closed stdin', () async {
-        final controllers = {
-          for (final s in [
-            ProcessSignal.sigint,
-            ProcessSignal.sigterm,
-            ProcessSignal.sighup,
-          ])
-            s: StreamController<ProcessSignal>.broadcast(),
-        };
+        final signals = FakeSignalSource();
         final command = DapCommand(
           t.wiring,
           input: client.input.stream,
@@ -322,8 +315,7 @@ void main() {
           resolvedExecutable: '/opt/tools/flutter_run',
           startupResponseWait: const Duration(milliseconds: 500),
           sessionWriteDebounce: const Duration(milliseconds: 10),
-          signalSource: (s) =>
-              (controllers[s] ?? StreamController<ProcessSignal>()).stream,
+          signalSource: signals,
         );
         final exit = runnerWith(
           command,
@@ -331,7 +323,7 @@ void main() {
         client.send('initialize');
         client.send('launch', {'cwd': '${t.dir.path}/app', 'noDebug': true});
         await waitForSession((s) => s['appStarted'] == true);
-        controllers[signal]!.add(signal);
+        signals.raise(signal);
         expect(await exit.timeout(const Duration(seconds: 30)), 0);
         expect(sessionFiles(), isEmpty);
       });

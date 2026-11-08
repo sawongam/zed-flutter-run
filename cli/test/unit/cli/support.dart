@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter_run/src/cli/signal_source.dart';
 import 'package:flutter_run/src/cli/wiring.dart';
 import 'package:flutter_run/src/common/console.dart';
 import 'package:flutter_run/src/common/host_environment.dart';
@@ -49,5 +51,32 @@ class TestWiring {
         sleep(const Duration(milliseconds: 100));
       }
     }
+  }
+}
+
+/// A [SignalSource] the test raises signals on by hand.
+class FakeSignalSource implements SignalSource {
+  final Map<ProcessSignal, StreamController<ProcessSignal>> _controllers = {};
+
+  /// Signals that [watch] refuses, like a platform that cannot watch them.
+  final Set<ProcessSignal> unsupported = {};
+
+  bool isWatched(ProcessSignal signal) =>
+      _controllers[signal]?.hasListener ?? false;
+
+  void raise(ProcessSignal signal) => _controllers[signal]?.add(signal);
+
+  @override
+  Stream<ProcessSignal> watch(ProcessSignal signal) {
+    if (unsupported.contains(signal)) {
+      throw const SignalException('cannot watch');
+    }
+    // Single-subscription with an onCancel future made in the caller's zone,
+    // so that `cancel` completes under `fake_async` (a broadcast stream's
+    // cancel returns a root-zone future that fake_async cannot flush).
+    return (_controllers[signal] ??= StreamController<ProcessSignal>(
+      sync: true,
+      onCancel: () async {},
+    )).stream;
   }
 }
