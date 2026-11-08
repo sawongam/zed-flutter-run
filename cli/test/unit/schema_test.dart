@@ -62,12 +62,20 @@ void main() {
       test('$name project', () {
         final scenarios = debugScenarios(project);
         expect(scenarios, isNotEmpty);
-        for (final scenario in scenarios) {
+        for (final template in scenarios) {
+          // The generated attach entry is a template: the user must still add
+          // the VM service address, which the schema requires (see ADR 0009).
+          final scenario = template['request'] == 'attach'
+              ? {...template, 'vmServiceUri': 'http://127.0.0.1:1/abc=/'}
+              : template;
+          if (template['request'] == 'attach') {
+            expect(schema.validate(template).isValid, isFalse);
+          }
           final result = schema.validate(scenario);
           expect(
             result.isValid,
             isTrue,
-            reason: '${scenario['label']}: ${result.errors}',
+            reason: '${template['label']}: ${result.errors}',
           );
         }
       });
@@ -117,6 +125,20 @@ void main() {
       );
     });
 
+    test('attach without a VM service address is invalid', () {
+      expect(valid({'adapter': 'FlutterRun', 'request': 'attach'}), isFalse);
+      expect(
+        valid({
+          'adapter': 'FlutterRun',
+          'request': 'attach',
+          'vmServiceInfoFile': '/tmp/info.json',
+        }),
+        isTrue,
+      );
+      // launch needs neither.
+      expect(valid({'adapter': 'FlutterRun', 'request': 'launch'}), isTrue);
+    });
+
     test('an unknown extra key is valid', () {
       expect(valid({'adapter': 'FlutterRun', 'somethingNew': 1}), isTrue);
     });
@@ -159,5 +181,24 @@ void main() {
     // The keys are the twelve of plan section 4.2.
     expect(LaunchRewriter.ownKeys, hasLength(12));
     expect(LaunchRewriter.ownKeys, containsAll(['flutterMode', 'platform']));
+  });
+
+  test('every key the proxy interprets is marked implemented or ignored', () {
+    final properties = raw['properties']! as Map<String, Object?>;
+    for (final key in LaunchRewriter.ownKeys) {
+      final support = (properties[key]! as Map)['x-support'];
+      expect(
+        support,
+        anyOf('implemented', 'ignored'),
+        reason: '$key is stripped by the proxy, so it is not a passthrough',
+      );
+    }
+    for (final entry in properties.entries) {
+      expect(
+        (entry.value! as Map)['x-support'],
+        anyOf('implemented', 'passthrough', 'ignored'),
+        reason: '${entry.key} needs an x-support',
+      );
+    }
   });
 }

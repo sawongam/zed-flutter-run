@@ -9,6 +9,10 @@ repository = "https://github.com/sawongam/zed-flutter-run"
 [debug_adapters.FlutterRun]
 # schema: debug_adapter_schemas/FlutterRun.json (default path)
 
+# Turns tasks such as `flutter run -d linux` or `dart run bin/main.dart` into FlutterRun scenarios.
+# Only used when the language's debuggers list starts with FlutterRun (see docs/decisions/0009).
+[debug_locators.FlutterRun]
+
 [[capabilities]]
 kind = "download_file"
 host = "github.com"
