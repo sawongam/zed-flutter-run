@@ -1,0 +1,67 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Security problems: do not file them here, see SECURITY.md.
+  - type: input
+    id: zed
+    attributes:
+      label: Zed version
+      description: Zed menu > About Zed, or `zed --version`.
+    validations:
+      required: true
+  - type: input
+    id: flutter_run
+    attributes:
+      label: flutter_run version
+      description: Output of `flutter_run version`.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`flutter_run doctor` output"
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Linux, macOS, Windows, Other]
+    validations:
+      required: true
+  - type: input
+    id: os_version
+    attributes:
+      label: OS version and architecture
+      placeholder: e.g. macOS 15.1 arm64, Ubuntu 24.04 x64, Windows 11 x64
+  - type: textarea
+    id: flutter
+    attributes:
+      label: "`flutter --version` output"
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: debug_json
+    attributes:
+      label: ".zed/debug.json"
+      description: The configuration you launch with (remove secrets).
+      render: json
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, what you expected and what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file
+      description: Start the session with `FLUTTER_RUN_LOG=/path/to/flutter_run.log` (or `logFile` in debug.json) and paste the relevant part or attach the file. Remove secrets and private paths.
+      render: text

@@ -1,6 +1,6 @@
 # Release guide (human-run)
 
-**An agent must not do any of these steps.** Everything below publishes something under your name (a GitHub release, a pub.dev package, a Homebrew tap, a Scoop bucket, a Zed registry PR), and the Zed registry explicitly bans autonomous agents from contributing ([AI_POLICY](research/zed-extension-registry.md), section 0). The release workflow (`.github/workflows/release.yml`) only builds artifacts; it never creates a release or publishes anywhere.
+**An agent must not do any of these steps.** Everything below publishes something under your name (a GitHub release, a pub.dev package, a Homebrew tap, a Scoop bucket, a Zed registry PR), and the Zed registry explicitly bans autonomous agents from contributing ([AI_POLICY](research/zed-extension-registry.md), section 0). The release workflow (`.github/workflows/release.yml`) builds and attests artifacts; its only write step is a **draft** GitHub release, and that step waits for a human approval (protected `release` environment). Nothing publishes unattended.
 
 Example version used throughout: `0.1.0`. Repository: `sawongam/zed-flutter-run`. Replace as needed.
 
@@ -10,6 +10,27 @@ Order matters because the extension pins SHA-256 checksums of the release binari
 pre-flight -> bump versions -> tag -> build artifacts -> verify -> GitHub release -> pin checksums (next commit)
           -> pub.dev -> Homebrew / Scoop -> Zed registry PR -> post-release checks
 ```
+
+## 0. Automation, environments and settings (one-time setup)
+
+Workflows in `.github/workflows/`: `ci.yml` (tests, coverage report, cargo-deny, Flutter matrix: pinned, oldest supported `3.32.0` = first Flutter with Dart 3.8, and `beta` which may fail), `release.yml` (build, `SHA256SUMS`, provenance, draft release), `publish-pub.yml` (optional pub.dev), `release-please.yml` (version-bump PRs), `scorecard.yml`, `codeql.yml` (language `actions` only; CodeQL does not support Dart), `label-sync.yml` (manual). The Rust toolchain is pinned in `extension/rust-toolchain.toml`; when bumping it also move the `dtolnay/rust-toolchain` SHA (use the commit of the matching version branch, whose message is `toolchain: X.Y.Z`).
+
+Create in **Settings > Environments** (each with *Required reviewers*: yourself, and *Deployment branches and tags*: tags `v*`):
+
+| Environment | Used by | Why |
+|---|---|---|
+| `release` | `release.yml` job `publish-github-release` | Approval before the draft release is created |
+| `pub.dev` | `publish-pub.yml` | Approval before publishing; also set it as the required environment in pub.dev (package Admin > Automated publishing, tag pattern `v{{version}}`) |
+
+Without these environments the gated jobs would run unattended, so create them **before pushing the first tag**. If you do not want pub.dev automation, delete `publish-pub.yml` and publish by hand (section 6).
+
+Other settings to enable:
+
+- **Branch protection / ruleset on `master`**: require a pull request, require status checks (`Version consistency`, `Dart (*)`, `Rust (*)`, `Integration (*)` except the beta leg, `cargo-deny`), require linear history, block force pushes and deletions, require CODEOWNERS review once there is more than one maintainer. Add a tag ruleset for `v*` (block deletion and updates, so published tags are immutable).
+- **Security**: *Private vulnerability reporting*, Dependabot alerts and security updates, secret scanning with push protection, code scanning (receives the CodeQL and Scorecard SARIF).
+- **Actions > General**: workflow permissions "Read repository contents" by default; tick "Allow GitHub Actions to create and approve pull requests" only if you want `release-please.yml` to work.
+- **Discussions** (linked from the issue template chooser) and **Issues**. Run the `Sync labels` workflow once (Actions > Sync labels > Run workflow) to create the labels in `.github/labels.yml`.
+- **release-please** (`release-please-config.json`, `.release-please-manifest.json`): on pushes to `master` it opens or updates a PR that bumps all five version locations. It only opens PRs: GitHub releases and tags are skipped and `CHANGELOG.md` stays hand-written. PRs created with `GITHUB_TOKEN` do not start CI; close and reopen the PR to run checks. Limitation: `cli/lib/src/common/version.dart` and `extension/src/install.rs` use the generic updater, which only rewrites lines carrying the marker comment `x-release-please-version` (for example `const packageVersion = '0.1.0'; // x-release-please-version`). Add the markers, otherwise those two files are not bumped and `check-versions.sh` fails on the release PR (which is the safe failure mode). Merge the PR, then continue with the manual steps below.
 
 ## 1. Pre-flight
 
@@ -36,7 +57,7 @@ pre-flight -> bump versions -> tag -> build artifacts -> verify -> GitHub releas
 
 ## 2. Build the binaries
 
-The workflow runs on `v*` tag pushes and on manual dispatch. It builds `dart compile exe bin/flutter_run.dart` on five runners and uploads one artifact per platform plus `SHA256SUMS`. It does **not** create a release.
+The workflow runs on `v*` tag pushes and on manual dispatch. It builds `dart compile exe bin/flutter_run.dart` on five runners and uploads one artifact per platform plus `SHA256SUMS`. On a tag push it then attests the files (section 3a) and, after you approve the `release` environment, creates a **draft** GitHub release with notes taken from `CHANGELOG.md` (section 4). It never publishes the release.
 
 Asset names must be exactly what `extension/src/install.rs::asset_name` computes, because the checksums are looked up by name. The workflow derives the name from the ref name (`flutter_run-$GITHUB_REF_NAME-<target>`), so **run it on the tag**, not on a branch: a dispatch on `master` produces `flutter_run-master-linux-x64`, which the extension will never find.
 
@@ -77,6 +98,17 @@ sha256sum -c SHA256SUMS         # every line must say OK  (macOS: shasum -a 256 
 - [ ] Optionally test the macOS and Windows binaries on those machines (artifact download strips the executable bit; GitHub release assets carry none either, which is why the extension calls `make_file_executable` and the Homebrew formula uses `bin.install`).
 - [ ] Keep this exact `SHA256SUMS` file. It is the source for the pinned checksums.
 
+### 3a. Verify build provenance
+
+`release.yml` attests every `flutter_run-*` binary and `SHA256SUMS` with `actions/attest-build-provenance` (a signed SLSA provenance statement stored in the repository's attestations). Anyone can check that a file was built by this repository's workflow from the tagged commit:
+
+```sh
+gh attestation verify flutter_run-v0.1.0-linux-x64 --repo sawongam/zed-flutter-run
+gh attestation verify SHA256SUMS --repo sawongam/zed-flutter-run
+```
+
+Do this for every file before step 4 (the draft release in step 4 already contains exactly the attested files). A failure means the file was not produced by the workflow; do not release it.
+
 ### macOS signing and notarization
 
 `dart compile exe` output is ad-hoc signed (CI prints `codesign -dv`), which is enough to run on Apple Silicon, but it is not notarized. Consequences for v0.1.0:
@@ -88,7 +120,9 @@ sha256sum -c SHA256SUMS         # every line must say OK  (macOS: shasum -a 256 
 
 The `.exe` is unsigned. A browser download shows "Windows protected your PC": More info > Run anyway (or `Unblock-File .\flutter_run.exe`). Files fetched by Scoop, `dart pub global activate` or the extension's download do not carry the Mark-of-the-Web. Reputation builds over downloads; signing options for later: Azure Trusted Signing, SignPath (free for open source), or an EV/OV certificate.
 
-## 4. Create the GitHub release (manual)
+## 4. GitHub release (draft by workflow, published by you)
+
+On a tag push the `publish-github-release` job waits for approval of the `release` environment (Actions run page > Review deployments). After approval it creates a **draft** release `vX.Y.Z` with the five binaries and `SHA256SUMS`, and notes from the `## [X.Y.Z]` section of `CHANGELOG.md` (the job fails if that section is missing or empty). Review the draft, add the install and unsigned-binary notes, and publish it in the web UI (or `gh release edit v0.1.0 --draft=false`). The manual alternative, if you prefer not to use the job:
 
 ```sh
 cd release
@@ -137,6 +171,8 @@ Note that regenerating the file drops the unit tests that lived in the hand-writ
 - [ ] **Test the download path** with this commit: dev-install the extension (`zed: install dev extension` > `extension/`), make sure `flutter_run` is not on the PATH and `dap.FlutterRun.binary` is unset, start a session. Expected: the binary appears at Zed's extension work dir (`.../extensions/work/flutter-run-debugger/flutter_run-0.1.0/flutter_run`), debugging starts, a PATH notice appears in the Console (the downloaded copy is not on the PATH). This reverses step 15 of the manual test.
 
 ## 6. pub.dev
+
+> Automated alternative: `publish-pub.yml` publishes on the same `vX.Y.Z` tag through OIDC after you approve the `pub.dev` environment (section 0). Do it only once, either way. Do not run it before the extension pins the checksums if you flip `PUBLISHED_ON_PUB`; the tag-triggered run happens before that commit, so decide deliberately.
 
 pub.dev needs a Google account. Published versions cannot be deleted (they can be retracted for a limited time and discontinued), so dry-run first.
 

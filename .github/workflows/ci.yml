@@ -15,10 +15,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # The Flutter version the integration suite is tested with.
-  FLUTTER_VERSION: "3.47.9"
-
 jobs:
   versions:
     name: Version consistency
@@ -92,11 +88,13 @@ jobs:
         working-directory: extension
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1 (moving tag)
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
-          targets: ${{ matrix.os == 'ubuntu-latest' && 'wasm32-wasip2' || '' }}
+      # dtolnay/rust-toolchain is pinned to the commit on its immutable
+      # `1.99.1` branch (commit message "toolchain: 1.99.1"), not the moving `v1`
+      # tag. It installs rustup; the real toolchain, components and targets come
+      # from extension/rust-toolchain.toml on the next step.
+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
         with:
           workspaces: extension
@@ -118,13 +116,95 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  coverage:
+    # Report-only: artifacts and a step summary. No upload service, no threshold.
+    name: Coverage (Dart + Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: stable
+      - name: Dart tests with coverage (unit + integration-dart)
+        working-directory: cli
+        run: |
+          dart pub get --enforce-lockfile
+          dart test --exclude-tags integration -j 1 --coverage=coverage
+          dart pub global activate coverage
+          dart pub global run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info \
+            --report-on=lib --packages=.dart_tool/package_config.json
+      - name: Dart coverage summary
+        working-directory: cli
+        run: |
+          awk -F: '/^LF:/{f+=$2} /^LH:/{h+=$2} END{ if (f>0) printf "### Dart line coverage\n\n%.1f%% (%d of %d lines)\n\n", 100*h/f, h, f; else print "### Dart line coverage\n\nno data\n" }' \
+            coverage/lcov.info | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-dart-lcov
+          path: cli/coverage/lcov.info
+          retention-days: 14
+          if-no-files-found: error
+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+      - name: Install toolchain from rust-toolchain.toml
+        working-directory: extension
+        run: rustup toolchain install && rustup component add llvm-tools-preview
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: cargo-llvm-cov
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          workspaces: extension
+      - name: Rust coverage
+        working-directory: extension
+        run: |
+          cargo llvm-cov --locked --lcov --output-path lcov.info
+          {
+            echo "### Rust coverage"
+            echo
+            echo '```'
+            cargo llvm-cov report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-rust-lcov
+          path: extension/lcov.info
+          retention-days: 14
+          if-no-files-found: error
+
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: cargo-deny
+      - name: cargo deny check (advisories, bans, licenses, sources)
+        working-directory: extension
+        run: cargo deny check
+
   integration:
     # Linux only for now (flutter-tester). Add macOS/Windows jobs for this
     # suite if it proves stable there.
-    name: Integration (flutter-tester, Linux)
+    name: Integration (flutter ${{ matrix.flutter.name }}, Linux)
     needs: [versions]  # independent of the per-OS Dart matrix, so one OS (or a queued macOS runner) does not block it
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    continue-on-error: ${{ matrix.flutter.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter:
+          # Pinned version the suite is developed against.
+          - { name: pinned, channel: stable, version: "3.47.9", experimental: false }
+          # Oldest supported: cli/pubspec.yaml requires Dart ^3.8.0, first
+          # shipped in Flutter 3.32.0 (stable). Raise this with the SDK constraint.
+          - { name: oldest, channel: stable, version: "3.32.0", experimental: false }
+          # Early warning for upcoming breakage; never blocks.
+          - { name: beta, channel: beta, version: "", experimental: true }
     defaults:
       run:
         working-directory: cli
@@ -132,8 +212,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          channel: stable
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ matrix.flutter.channel }}
+          flutter-version: ${{ matrix.flutter.version }}
           cache: true
       - run: flutter precache --linux
       - run: flutter doctor -v
@@ -145,7 +225,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: integration-logs
+          name: integration-logs-${{ matrix.flutter.name }}
           path: cli/.dart_tool/flutter_run_test/**
           retention-days: 7
           if-no-files-found: ignore
