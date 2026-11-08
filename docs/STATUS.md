@@ -1,8 +1,9 @@
-# STATUS: Flutter Run & Debug in Zed (`flutter_run` 0.1.0, branch `build/mvp`)
+# STATUS: Flutter Run & Debug in Zed (`flutter_run` 0.1.0)
 
-- **Date:** 2026-11-03 (end of the autonomous cloud run)
-- **Where:** branch [`build/mvp`](https://github.com/sawongam/zed-flutter-run/tree/build/mvp), draft PR [sawongam/zed-flutter-run#1](https://github.com/sawongam/zed-flutter-run/pull/1) against `master`. Nothing was pushed to `master`.
+- **Date:** 2026-11-08 (first written 2026-11-03 at the end of the autonomous cloud run)
+- **Where:** the code is on `master` (history was squashed). The branch `build/mvp` and its draft PR no longer exist; issue/PR #1 is now a Dependabot PR. Work on the `improve/world-class` branch (docs, hygiene, CI hardening, internal refactors, a debug locator) is **in progress** and not described here as done.
 - **Published:** nothing. No pub.dev, crates.io, Homebrew, Scoop, Zed registry, GitHub release, tag, or issue post. The steps are in [RELEASE.md](RELEASE.md).
+- **CI:** the latest `master` run, [42020956342](https://github.com/sawongam/zed-flutter-run/actions/runs/42020956342), passed all 8 jobs, including Windows. The Windows session-file flake is fixed.
 
 **Short version:** the proxy + CLI and the Zed extension are built, reviewed three times over, and proven **headlessly** against the real `flutter debug_adapter` and `dart debug_adapter`. Breakpoints, hot reload, hot restart, reload on save, attach, DevTools URL and clean stop all pass through the proxy on a real sample app. **Nothing has been run inside real Zed or on a real device yet**; that's your first job ([MANUAL_ZED_TEST.md](MANUAL_ZED_TEST.md)).
 
@@ -45,11 +46,13 @@ Reviews done (all independent of the authors; findings and resolutions are in [d
 - **macOS** only through CI (unit tests, `integration-dart`, compile and Rust pass there); never run by hand. **Windows** only through CI: unit tests and the `integration-dart` suite (real `dart debug_adapter` through the compiled proxy, incl. Zed-style stop, adapter crash and EOF cleanup) pass on `windows-latest`; the Flutter suite (`flutter.bat` launching, hot reload on a Flutter app) has **not** run on Windows, and the `rundll32` browser launch is unit-tested only.
 - Opening DevTools in a real browser (only the URL and an HTTP 200 were checked).
 
-**CI:** GitHub Actions runs on every PR update: unit tests + `integration-dart` on Linux, macOS and Windows; the Flutter integration suite on Linux; `dart compile exe` per OS; Rust checks. **Latest run [41741647402](https://github.com/sawongam/zed-flutter-run/actions/runs/41741647402) (2026-11-03) was a failure, not green:** every job passed (Version consistency, Dart on ubuntu and **macOS**, Rust on all three OSes, Flutter integration on Linux) except **Dart (windows-latest)**, where one unit test, `session files update is atomic`, failed with `Access is denied` (errno 5) while renaming the session file. That is a Windows sharing-violation flake: the test's reader had the file open during the rename and the production retry budget (10 x 50 ms) was too short. The fix (rename retry now backs off over about 5 s; the test reader sleeps 2 ms between reads) is in the working tree and **has not been re-run on Windows CI yet**. The previous run, 41740646030, was **cancelled**, not green. CI earlier found and we fixed 28 Windows unit failures, a Windows orphan-process bug after an adapter crash, and a reload-on-save flake on slow runners (see conversation 011).
+**CI:** GitHub Actions runs on every push to `master` and every PR: unit tests + `integration-dart` on Linux, macOS and Windows; the Flutter integration suite on Linux; `dart compile exe` per OS; Rust checks. The latest `master` run (42020956342) passed all 8 jobs. CI earlier found and we fixed 28 Windows unit failures, a Windows orphan-process bug after an adapter crash, a reload-on-save flake on slow runners, and a Windows session-file rename flake (see conversation 011 and 007).
 
 The Flutter integration suite has only run on Linux in CI; on Windows the `flutter.bat` launch path and hot reload on a Flutter app are untested.
 
 **Local re-verification (Arch Linux, Flutter 3.47.0 / Dart 3.13.0, not the 3.47.9 / 3.13.7 of the original run):** `dart format` 0 changed, `dart analyze --fatal-infos` clean, 773 unit, 15 `integration-dart`, 21 Flutter (flutter-tester) integration tests passed; compiled binary prints `flutter_run 0.1.0` for `--version`, `-V` and `version`. For this the fixture `sdk:` constraint was lowered from `^3.13.7` to `^3.5.0` so the fixture resolves on older Dart.
+
+**Local machine notes (maintainer, 2026-11-08):** `~/.local/bin/flutter_rd` is the pre-rename binary and is still there. `flutter_run` is not installed on that machine, and the dev extension is not installed in Zed. So nothing has been tried in real Zed with the current names.
 
 **Release path:** the extension's download fallback has **no pinned checksums** (no release exists), so in this build it never downloads; it tells you to install `flutter_run` instead. That's expected until [RELEASE.md](RELEASE.md) is followed.
 
@@ -67,11 +70,11 @@ The Flutter integration suite has only run on Linux in CI; on Windows the `flutt
 
 ## 4. Your next steps
 1. **Run [MANUAL_ZED_TEST.md](MANUAL_ZED_TEST.md)** on your Arch machine (Zed 1.26.x, Flutter via fvm, official Dart extension installed). It takes about 30–45 minutes and has a results table to paste into `docs/conversations/`. Most important checks: the dev extension loads; F4 shows `FlutterRun` scenarios; a breakpoint hits; `ctrl-f5` hot reloads; saving reloads; stop leaves nothing running.
-2. Push the Windows flake fix and confirm the Windows CI job goes green (macOS and Linux jobs passed on the latest run).
+2. Install `flutter_run` and the dev extension (remove the old `flutter_rd` binary first).
 3. If you have them, repeat the key manual steps on macOS and Windows, and with an Android emulator / iOS simulator.
 4. Read [docs.flutter.dev/brand](https://docs.flutter.dev/brand) once (it was blocked here) and re-check the names in [research/naming.md](research/naming.md) before publishing.
-5. When happy: merge the PR, then follow [RELEASE.md](RELEASE.md) (tag, build binaries with the artifact-only release workflow, create the GitHub release yourself, pin checksums in `extension/src/checksums.rs`, `dart pub publish`, Homebrew/Scoop, and a **human-written** Zed registry PR).
+5. When happy, follow [RELEASE.md](RELEASE.md) (tag, build binaries with the artifact-only release workflow, create the GitHub release yourself, pin checksums in `extension/src/checksums.rs`, `dart pub publish`, Homebrew/Scoop, and a **human-written** Zed registry PR).
 
 ## 5. Where to look
 - How it works: [ARCHITECTURE.md](ARCHITECTURE.md). How it was planned: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). Why: [decisions/](decisions/). What happened, phase by phase: [conversations/](conversations/) 005–011.
-- User docs: [../README.md](../README.md). Contributing: [../CONTRIBUTING.md](../CONTRIBUTING.md). Security model: [../SECURITY.md](../SECURITY.md).
+- User docs: [../README.md](../README.md), [CONFIGURATION.md](CONFIGURATION.md), [COMPATIBILITY.md](COMPATIBILITY.md), [TROUBLESHOOTING.md](TROUBLESHOOTING.md), [PRIVACY.md](PRIVACY.md). Contributing: [../CONTRIBUTING.md](../CONTRIBUTING.md). Security model: [../SECURITY.md](../SECURITY.md).

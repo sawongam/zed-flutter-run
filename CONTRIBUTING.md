@@ -13,17 +13,26 @@ Thanks for helping. By taking part you agree to the [Code of Conduct](CODE_OF_CO
 | `docs/` | Project memory: plan, decisions, research, reviews, conversation logs |
 | `spike/` | Historical, not built, never edited |
 | `.github/` | CI and release workflows |
+| `tool/` | Contributor scripts (`bootstrap.sh`) |
+
+## Quick start
+
+```sh
+sh tool/bootstrap.sh
+```
+
+The script checks for `dart`, `flutter` and `rustup`, adds the `wasm32-wasip2` target, runs `dart pub get` in `cli/` and `cargo fetch` in `extension/`. It is safe to run again and never uses `sudo`. A dev container is in `.devcontainer/` if you prefer one.
 
 ## Prerequisites
 
 - Dart SDK 3.8 or newer (it comes with Flutter).
-- Flutter SDK for the `integration` suite (it uses `flutter-tester`, no device needed).
+- Flutter SDK for the `integration` suite (it uses `flutter-tester`, no device needed). CI uses the version in `FLUTTER_VERSION` in `.github/workflows/ci.yml`.
 - Rust (via rustup) with the `wasm32-wasip2` target for the extension.
-- Zed, for manual testing (`zed: install dev extension`).
+- Zed, for manual testing (`zed: install dev extension`). See [docs/MANUAL_ZED_TEST.md](docs/MANUAL_ZED_TEST.md).
 
-## Running checks
+## Run CI locally
 
-CLI, from `cli/`:
+CLI, from `cli/`. Run `dart pub get` before `dart format`, because format needs the package config:
 
 ```sh
 dart pub get
@@ -44,6 +53,23 @@ rustup target add wasm32-wasip2
 cargo clippy --target wasm32-wasip2 -- -D warnings
 cargo build --release --target wasm32-wasip2
 ```
+
+CI also runs `sh .github/scripts/check-versions.sh`, which checks that the version numbers agree.
+
+## Architecture rules
+
+- Every module under `cli/lib/src/<module>/` imports only `package:*`, `dart:*`, `lib/src/common/**` and its own files. Modules never import each other.
+- Only `cli/lib/src/cli/` wires modules together (the composition root).
+- A module defines the interfaces it needs, and `cli/` provides the real implementations.
+- For a design change, write an ADR in `docs/decisions/` (`NNNN-title.md`: context, options, choice, consequences) and add it to the index in `docs/README.md`. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first.
+
+## Commits and pull requests
+
+Use [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `ci:`, `chore:`. Mark breaking changes with `!` or a `BREAKING CHANGE:` footer. Release automation (release-please) is being added and will build the changelog and version from these messages.
+
+## Good first issues
+
+Look for the [`good first issue`](https://github.com/sawongam/zed-flutter-run/labels/good%20first%20issue) label. Running [docs/MANUAL_ZED_TEST.md](docs/MANUAL_ZED_TEST.md) on your OS and reporting the results is also very welcome, since nothing has been tested in real Zed yet.
 
 ## Code rules
 
@@ -70,8 +96,8 @@ Read [docs/README.md](docs/README.md) before you start. After a milestone or a u
 
 - [ ] Format, analyze and unit tests pass; integration tests pass if you touched the proxy, control channel, watcher or SDK code.
 - [ ] `cargo fmt`, `clippy` and `cargo test` pass if you touched `extension/`.
-- [ ] If you changed a debug.json key, update `FlutterRun.json`, `init` templates, README and the schema test together.
-- [ ] If you added or changed a command, flag, message or exit code, update the README and CHANGELOG (`## [Unreleased]`).
+- [ ] If you changed a debug.json key, update `FlutterRun.json`, `init` templates, `docs/CONFIGURATION.md` and the schema test together.
+- [ ] If you added or changed a command, flag, message or exit code, update `docs/CONFIGURATION.md` and the CHANGELOG (`## [Unreleased]`).
 - [ ] No stdout writes in the proxy; no new `print`.
 - [ ] Docs updated (conversation log, ADR if you decided something, research notes if facts changed).
 - [ ] No secrets, no telemetry, no network calls beyond what SECURITY.md describes.

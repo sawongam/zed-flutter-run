@@ -1,0 +1,25 @@
+{
+  "name": "zed-flutter-run",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "1.97",
+      "profile": "default",
+      "targets": "wasm32-wasip2"
+    }
+  },
+  "containerEnv": {
+    "FLUTTER_ROOT": "/home/vscode/flutter",
+    "PUB_CACHE": "/home/vscode/.pub-cache"
+  },
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/home/vscode/flutter/bin:/home/vscode/.pub-cache/bin"
+  },
+  "onCreateCommand": "sh -c 'test -d \"$HOME/flutter\" || git clone --depth 1 --branch 3.47.9 https://github.com/flutter/flutter.git \"$HOME/flutter\"'",
+  "postCreateCommand": "flutter --version && sh tool/bootstrap.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": ["Dart-Code.dart-code", "rust-lang.rust-analyzer"]
+    }
+  }
+}

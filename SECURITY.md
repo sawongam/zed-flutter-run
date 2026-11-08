@@ -10,9 +10,21 @@ Only the latest release receives security fixes.
 
 ## Reporting a vulnerability
 
-Please do not open a public issue. Use GitHub's private vulnerability reporting: on the repository page choose **Security** > **Report a vulnerability** (a GitHub Security Advisory). If that is unavailable, contact the repository owner through their GitHub profile and ask for a private channel.
+Please do not open a public issue. Use GitHub's private vulnerability reporting: on the repository page choose **Security** > **Report a vulnerability** (a GitHub Security Advisory; direct link: <https://github.com/sawongam/zed-flutter-run/security/advisories/new>). If that is unavailable, contact the repository owner through their GitHub profile and ask for a private channel.
 
 Include the version, your OS, steps to reproduce and the impact. We aim to acknowledge reports within a week and to agree on a disclosure date with you.
+
+## Threat model: the downloaded binary
+
+The Zed extension is a small WebAssembly module. The tool it runs, `flutter_run`, is a separate native binary. The extension finds it in this order: the `dap.FlutterRun.binary` setting, `PATH`, then (release builds only) a download from this repository's GitHub releases.
+
+The risk is a tampered or substituted binary. What protects you:
+
+- **Pinned SHA-256.** Each release's checksums are written into the extension source (`extension/src/checksums.rs`) at release time. The extension refuses a downloaded file whose SHA-256 does not match. A dev build, or a build with no pinned checksums, never downloads.
+- **Fixed source.** The extension may only download from `github.com/sawongam/zed-flutter-run` (its declared `download_file` capability).
+- **Build provenance (being added).** Release binaries will carry GitHub build provenance attestations. Verify one yourself with `gh attestation verify <file> --repo sawongam/zed-flutter-run`. This is not in place until the first release is published.
+
+What is not covered: a compromised maintainer account or repository can publish a release and update the pinned checksums together. Attestations let you check which workflow built a binary. If you do not want automatic downloads at all, install `flutter_run` yourself and set `dap.FlutterRun.binary`.
 
 ## Scope
 

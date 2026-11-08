@@ -1,11 +1,31 @@
 # Project docs: Flutter Run & Debug in Zed
 
-> **Start with [STATUS.md](STATUS.md)**: what works, how it was checked, what's untested, and your next steps.
+> **Start with [STATUS.md](STATUS.md)**: what works, how it was checked, what's untested.
 > Cloud/autonomous agents: the original plan is [HANDOFF.md](HANDOFF.md).
 
-This folder is the project's memory. Read it before building, and add to it at every milestone.
+This folder has two parts: guides for people who use or contribute to the tool, and the project memory (logs, decisions, research, reviews).
 
-## Layout
+# Using and contributing
+
+| Document | What is in it |
+|---|---|
+| [CONFIGURATION.md](CONFIGURATION.md) | Every `debug.json` key, environment variable, command, flag and exit code |
+| [COMPATIBILITY.md](COMPATIBILITY.md) | Zed, Flutter, OS and device support and test status |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems and fixes |
+| [PRIVACY.md](PRIVACY.md) | No telemetry; the few network uses |
+| [STATUS.md](STATUS.md) | Honest state of the build (read first) |
+| [MANUAL_ZED_TEST.md](MANUAL_ZED_TEST.md) | Step-by-step checklist to run in real Zed |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Final architecture, modules, protocols, security model |
+| [RELEASE.md](RELEASE.md) | Human-run release steps (nothing has been published) |
+
+Repo root: [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [SECURITY](../SECURITY.md), [CHANGELOG](../CHANGELOG.md), [CODE_OF_CONDUCT](../CODE_OF_CONDUCT.md).
+
+# Project memory
+
+The history of how the project was planned and built. Read it before changing the design, and add to it at every milestone.
+
+- [HANDOFF.md](HANDOFF.md): the autonomous build plan
+- [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md): the reviewed plan the code was built from (section 11 maps every plan-review finding)
 
 | Folder | What goes in it | File naming |
 |---|---|---|
@@ -14,16 +34,7 @@ This folder is the project's memory. Read it before building, and add to it at e
 | [`decisions/`](decisions/) | One file per architecture decision (ADR): context, options, choice, consequences | `NNNN-title.md` |
 | [`reviews/`](reviews/) | Independent plan and code reviews, with finding ids referenced by ADRs and logs | `topic.md` |
 
-## Top-level documents
-- **[STATUS.md](STATUS.md)**: honest state of the build (read first)
-- [MANUAL_ZED_TEST.md](MANUAL_ZED_TEST.md): step-by-step checklist to run in real Zed
-- [ARCHITECTURE.md](ARCHITECTURE.md): final architecture, modules, protocols, security model
-- [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md): the reviewed plan the code was built from (§11 maps every plan-review finding)
-- [RELEASE.md](RELEASE.md): human-run release steps (nothing has been published)
-- [HANDOFF.md](HANDOFF.md): the autonomous build plan
-- Repo root: [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [SECURITY](../SECURITY.md), [CHANGELOG](../CHANGELOG.md), [CODE_OF_CONDUCT](../CODE_OF_CONDUCT.md)
-
-## Index
+## Project memory index
 
 ### Conversations
 - [2026-11-04-001: Kickoff, "a Flutter Run & Debug in Zed"](conversations/2026-11-04-001-kickoff.md)
@@ -33,6 +44,7 @@ This folder is the project's memory. Read it before building, and add to it at e
 - [2026-11-04-005: Local verification on Arch, small fixes, authorship cleanup](conversations/2026-11-04-005-local-verification-and-fixes.md)
 - [2026-11-05-006: Rename to zed-flutter-run](conversations/2026-11-05-006-rename-to-zed-flutter-run.md)
 - [2026-11-05-007: First CI run, format fix](conversations/2026-11-05-007-ci-format-fix.md)
+- [2026-11-08-008: Status check and quality review](conversations/2026-11-08-008-quality-review.md)
 - [2026-11-03-005: Cloud environment setup (Phase 0)](conversations/2026-11-03-005-cloud-env.md) (the cloud container's clock is a day behind the local session's; order by NNN)
 - [2026-11-03-006: Phase 1 research and Gate 1](conversations/2026-11-03-006-phase1-research-gate1.md)
 - [2026-11-03-007: Phase 2 spike and Gate 2](conversations/2026-11-03-007-phase2-spike-gate2.md)
