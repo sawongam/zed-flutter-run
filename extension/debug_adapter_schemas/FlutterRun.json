@@ -27,7 +27,7 @@
     "request": {
       "type": "string",
       "description": "launch starts the app with flutter run (or dart for type dart); attach connects to an app that is already running.",
-      "markdownDescription": "`launch` starts the app (`flutter run` or `dart`). `attach` connects to an app that is already running and needs `vmServiceUri` or `vmServiceInfoFile`.",
+      "markdownDescription": "`launch` starts the app (`flutter run` or `dart`). `attach` connects to an app that is already running. Pass `vmServiceUri` (required for `type: dart`); without it a Flutter attach waits for an app to start on the device (the proxy warns after 15 s).",
       "enum": [
         "launch",
         "attach"
@@ -148,7 +148,7 @@
     "vmServiceUri": {
       "type": "string",
       "description": "VM service address of the running app (request attach). Printed by flutter run, for example http://127.0.0.1:50123/abc=/.",
-      "markdownDescription": "VM service address of the running app. **Required for `attach`** unless `vmServiceInfoFile` is set; Zed's modal \"attach\" cannot ask for it. `flutter run` prints it as *A Dart VM Service ... is available at: ...*.",
+      "markdownDescription": "VM service address of the running app. **Recommended for `attach`**, and required for `type: dart` unless `vmServiceInfoFile` is set. Without it a Flutter attach waits for an app to appear; Zed's modal \"attach\" cannot ask for it. `flutter run` prints it as *A Dart VM Service ... is available at: ...*.",
       "examples": [
         "http://127.0.0.1:50123/abc123=/",
         "ws://127.0.0.1:50123/abc123=/ws"
@@ -288,10 +288,14 @@
         "properties": {
           "request": {
             "const": "attach"
+          },
+          "type": {
+            "const": "dart"
           }
         },
         "required": [
-          "request"
+          "request",
+          "type"
         ]
       },
       "then": {

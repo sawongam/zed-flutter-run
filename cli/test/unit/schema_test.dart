@@ -118,8 +118,13 @@ void main() {
       );
     });
 
-    test('attach without a VM service address is invalid', () {
-      expect(valid({'adapter': 'FlutterRun', 'request': 'attach'}), isFalse);
+    test('a Dart attach without a VM service address is invalid', () {
+      expect(
+        valid({'adapter': 'FlutterRun', 'request': 'attach', 'type': 'dart'}),
+        isFalse,
+      );
+      // A Flutter attach may wait for the app to start (proxy watchdog).
+      expect(valid({'adapter': 'FlutterRun', 'request': 'attach'}), isTrue);
       expect(
         valid({
           'adapter': 'FlutterRun',

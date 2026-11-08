@@ -33,7 +33,7 @@ ADR 0006 D4 deferred the locator because it "only works when the user sets `lang
 - A command that contains spaces is split on whitespace only if there are no separate args and no quotes. Otherwise it is treated as a path and not matched.
 - The scenario has `build: None` and the task's resolved label.
 
-Related change in the same batch: the modal `dap_config_to_scenario` now picks `type: "dart"` for a `.dart` program whose first `lib`/`bin`/`test` folder is not `lib` (or that has none), rejects an empty launch program with a clear error, and documents that a modal attach scenario still needs `vmServiceUri`. The JSON schema now requires `vmServiceUri` or `vmServiceInfoFile` for `request: attach`.
+Related change in the same batch: the modal `dap_config_to_scenario` now picks `type: "dart"` for a `.dart` program whose first `lib`/`bin`/`test` folder is not `lib` (or that has none), rejects an empty launch program with a clear error, and documents that a modal attach scenario still needs `vmServiceUri`. The JSON schema requires `vmServiceUri` or `vmServiceInfoFile` for a `type: dart` attach. A Flutter attach without one is allowed: it waits for the app to start, and the proxy warns after 15 s. The proxy rejects the `init` placeholder URI (`PORT/TOKEN`) with a clear error.
 
 ## Consequences
 - Users who set `"languages": {"Dart": {"debuggers": ["FlutterRun"]}}` see a debug entry next to their `flutter run` tasks. Without that setting nothing changes.
