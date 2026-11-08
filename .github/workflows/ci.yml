@@ -4,8 +4,9 @@ on:
   push:
     branches: [master]
     paths-ignore: ["docs/**", "**.md"]
+  # No paths-ignore on pull_request: required checks must always report,
+  # or docs-only PRs could never be merged under branch protection.
   pull_request:
-    paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
 
 permissions:
@@ -22,6 +23,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: sh .github/scripts/check-versions.sh
 
   dart:
@@ -40,6 +43,8 @@ jobs:
       EXE: build/flutter_run${{ matrix.os == 'windows-latest' && '.exe' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
           sdk: stable
@@ -88,6 +93,8 @@ jobs:
         working-directory: extension
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # dtolnay/rust-toolchain is pinned to the commit on its immutable
       # `1.99.1` branch (commit message "toolchain: 1.99.1"), not the moving `v1`
       # tag. It installs rustup; the real toolchain, components and targets come
@@ -95,7 +102,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
-      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3 (peeled commit)
         with:
           workspaces: extension
       - run: cargo fmt --check
@@ -123,6 +130,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
           sdk: stable
@@ -131,8 +140,7 @@ jobs:
         run: |
           dart pub get --enforce-lockfile
           dart test --exclude-tags integration -j 1 --coverage=coverage
-          dart pub global activate coverage
-          dart pub global run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info \
+          dart run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info \
             --report-on=lib --packages=.dart_tool/package_config.json
       - name: Dart coverage summary
         working-directory: cli
@@ -152,7 +160,7 @@ jobs:
       - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-llvm-cov
-      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3 (peeled commit)
         with:
           workspaces: extension
       - name: Rust coverage
@@ -179,6 +187,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-deny
@@ -200,9 +210,9 @@ jobs:
         flutter:
           # Pinned version the suite is developed against.
           - { name: pinned, channel: stable, version: "3.47.9", experimental: false }
-          # Oldest supported: cli/pubspec.yaml requires Dart ^3.8.0, first
-          # shipped in Flutter 3.32.0 (stable). Raise this with the SDK constraint.
-          - { name: oldest, channel: stable, version: "3.32.0", experimental: false }
+          # No "oldest" leg: the test dependencies (test ^1.33, analyzer) need
+          # Dart >= 3.13, so the suite cannot run on older Flutter SDKs. Older
+          # Flutter versions are untested; see docs/COMPATIBILITY.md.
           # Early warning for upcoming breakage; never blocks.
           - { name: beta, channel: beta, version: "", experimental: true }
     defaults:
@@ -210,6 +220,8 @@ jobs:
         working-directory: cli
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: ${{ matrix.flutter.channel }}

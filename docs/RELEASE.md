@@ -13,7 +13,7 @@ pre-flight -> bump versions -> tag -> build artifacts -> verify -> GitHub releas
 
 ## 0. Automation, environments and settings (one-time setup)
 
-Workflows in `.github/workflows/`: `ci.yml` (tests, coverage report, cargo-deny, Flutter matrix: pinned, oldest supported `3.32.0` = first Flutter with Dart 3.8, and `beta` which may fail), `release.yml` (build, `SHA256SUMS`, provenance, draft release), `publish-pub.yml` (optional pub.dev), `release-please.yml` (version-bump PRs), `scorecard.yml`, `codeql.yml` (language `actions` only; CodeQL does not support Dart), `label-sync.yml` (manual). The Rust toolchain is pinned in `extension/rust-toolchain.toml`; when bumping it also move the `dtolnay/rust-toolchain` SHA (use the commit of the matching version branch, whose message is `toolchain: X.Y.Z`).
+Workflows in `.github/workflows/`: `ci.yml` (tests, coverage report, cargo-deny, Flutter matrix: pinned `3.47.9` and `beta` which may fail; no older leg because the test dependencies need Dart 3.13+), `release.yml` (build, `SHA256SUMS`, provenance, draft release), `publish-pub.yml` (optional pub.dev), `release-please.yml` (version-bump PRs; `release-as: "0.1.0"` in `release-please-config.json` makes the first PR propose 0.1.0, remove it after 0.1.0 is tagged), `scorecard.yml`, `codeql.yml` (language `actions` only; CodeQL does not support Dart), `label-sync.yml` (manual). The Rust toolchain is pinned in `extension/rust-toolchain.toml`; when bumping it also move the `dtolnay/rust-toolchain` SHA (use the commit of the matching version branch, whose message is `toolchain: X.Y.Z`).
 
 Create in **Settings > Environments** (each with *Required reviewers*: yourself, and *Deployment branches and tags*: tags `v*`):
 

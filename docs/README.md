@@ -15,7 +15,8 @@ This folder has two parts: guides for people who use or contribute to the tool, 
 | [PRIVACY.md](PRIVACY.md) | No telemetry; the few network uses |
 | [STATUS.md](STATUS.md) | Honest state of the build (read first) |
 | [MANUAL_ZED_TEST.md](MANUAL_ZED_TEST.md) | Step-by-step checklist to run in real Zed |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Final architecture, modules, protocols, security model |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Final architecture, modules, ports, session phases, protocols, security model |
+| [EXTENDING.md](EXTENDING.md) | Recipes: add a command, injected DAP request, `debug.json` key, locator pattern or port; testing conventions |
 | [RELEASE.md](RELEASE.md) | Human-run release steps (nothing has been published) |
 
 Repo root: [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [SECURITY](../SECURITY.md), [CHANGELOG](../CHANGELOG.md), [CODE_OF_CONDUCT](../CODE_OF_CONDUCT.md).
@@ -77,6 +78,8 @@ The history of how the project was planned and built. Read it before changing th
 - [0008: Rename to `zed-flutter-run`: `flutter_run`, `FlutterRun`, `flutter-run-debugger`](decisions/0008-rename-to-zed-flutter-run.md) (accepted)
 - [0006: Plan-review resolutions (install model, shutdown, simplifications)](decisions/0006-plan-review-resolutions.md) (accepted)
 - [0007: Phase 6 review resolutions (process cleanup, log file, behaviour choices)](decisions/0007-phase6-review-resolutions.md) (accepted)
+- [0009: Debug locator for `flutter run` and `dart run` tasks](decisions/0009-debug-locator.md) (accepted)
+- [0010: Internal architecture: ports, injected clock, explicit session phases](decisions/0010-internal-architecture-ports-and-phases.md) (accepted)
 
 ### Reviews
 - Plan: [architecture](reviews/plan-review-architecture.md), [user experience](reviews/plan-review-ux.md)

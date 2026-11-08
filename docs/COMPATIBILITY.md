@@ -4,7 +4,7 @@ Status values: **CI** means exercised by GitHub Actions. **Manual** means a pers
 
 ## Support policy
 
-- **Flutter:** the latest stable release, and the oldest release that ships Dart 3.8 (`flutter_run` requires Dart `^3.8.0`).
+- **Flutter:** the latest stable release (CI runs the pinned 3.47.9 and `beta`). Building and testing `flutter_run` needs Dart 3.13+ because of the test dependencies. Older Flutter SDKs used only as the runtime `flutter debug_adapter` are untested.
 - **Zed:** the latest stable release. The extension uses extension API 0.7.0, which needs Zed 0.205 or newer according to the `zed_extension_api` README.
 - **OS:** Linux, macOS and Windows.
 - Older versions may work. They are not tested.
@@ -25,7 +25,7 @@ The Zed side was checked by reading Zed's source only.
 |---|---|---|---|
 | 3.47.9 (pinned in CI) | 3.13.7 | CI (Linux) | Original verification run too |
 | 3.47.0 | 3.13.0 | Manual, maintainer's Arch machine, headless suite only (not in real Zed) | Fixture constraint lowered to `^3.5.0` |
-| Oldest shipping Dart 3.8 | 3.8.x | Untested | Policy floor |
+| Older than 3.47 | < 3.13 | Untested | Not in CI: the test suite needs Dart 3.13+ |
 | Other | | Untested | |
 
 ## Operating systems

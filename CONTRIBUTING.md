@@ -25,7 +25,7 @@ The script checks for `dart`, `flutter` and `rustup`, adds the `wasm32-wasip2` t
 
 ## Prerequisites
 
-- Dart SDK 3.8 or newer (it comes with Flutter).
+- Dart SDK 3.13 or newer (it comes with Flutter 3.47+). The test dependencies need it.
 - Flutter SDK for the `integration` suite (it uses `flutter-tester`, no device needed). CI uses the version in `FLUTTER_VERSION` in `.github/workflows/ci.yml`.
 - Rust (via rustup) with the `wasm32-wasip2` target for the extension.
 - Zed, for manual testing (`zed: install dev extension`). See [docs/MANUAL_ZED_TEST.md](docs/MANUAL_ZED_TEST.md).

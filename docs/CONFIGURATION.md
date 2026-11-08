@@ -77,12 +77,26 @@ Start the app yourself with `flutter run -d <device>`, copy the VM service URL i
 ```
 
 - With more than one device connected, a device is required (`deviceId`, `-d` in `toolArgs`, or a saved device).
-- Without any URI the adapter waits silently. After 15 seconds `flutter_run` prints a notice.
+- The placeholder `http://127.0.0.1:PORT/TOKEN=/` that `flutter_run init` writes is rejected with a message telling you to paste the real URI.
+- A Dart attach (`"type": "dart"`) needs `vmServiceUri` (or `vmServiceInfoFile`) and is refused without one.
+- A Flutter attach without a URI is allowed: Flutter waits for an app to start. After 15 seconds without an app, `flutter_run` prints "Still waiting for the app" in the Console.
 - Stopping an attach session only detaches. Your app keeps running.
 
 ### Debugging from tasks
 
-Planned for 0.1.0 (see ADR 0009 in `docs/decisions/`): a debug locator, so a Zed task that runs `flutter run` can be debugged without writing a scenario. Until it ships, use scenarios from `debug.json` as described above. Check [CHANGELOG.md](../CHANGELOG.md) to see whether it is in your version.
+The extension has a debug locator ([ADR 0009](decisions/0009-debug-locator.md)) that turns a Zed task into a `FlutterRun` scenario, so a task that already runs your app can be debugged without writing a `debug.json` entry. It matches only tasks that start an app: `flutter run`, `fvm flutter run`, `puro flutter run`, `dart run <file>.dart` and `dart <file>.dart`. Other tasks (`flutter build`, `flutter test`, `dart pub get`) are left alone.
+
+| Task argument | Scenario key |
+|---|---|
+| `-d X`, `--device-id X`, `--device-id=X` | `deviceId` |
+| `--debug`, `--profile`, `--release` | `flutterMode` |
+| `-t X`, `--target X`, `--target=X` | `program` |
+| other flags (`--flavor dev`, `--dart-define=A=1`) | `toolArgs`, in order |
+| arguments after a bare `--` | `args` |
+| `fvm` prefix | `useFvm: true` |
+| task `env` and `cwd` | `env`, `cwd` |
+
+Zed only asks a locator when the language of the open file lists the adapter, so set `"languages": {"Dart": {"debuggers": ["FlutterRun"]}}` in your Zed settings. The locator has not been run in a real Zed yet. Scenarios in `debug.json` keep working as described above.
 
 ## Environment variables
 
