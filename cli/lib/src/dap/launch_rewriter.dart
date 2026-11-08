@@ -1,5 +1,6 @@
 import '../common/json_types.dart';
 import '../common/logger.dart';
+import 'messages.dart';
 
 enum DapKind { flutter, dart }
 
@@ -12,6 +13,7 @@ class RewriteResult {
     required this.deviceId,
     required this.deviceSource,
     required this.notes,
+    this.rejection,
   });
 
   /// What goes to the adapter.
@@ -23,6 +25,10 @@ class RewriteResult {
   final String? deviceId;
   final DeviceSource deviceSource;
   final List<String> notes;
+
+  /// When set, the request must not reach the adapter; this text is the
+  /// user-facing reason (for example an `attach` without a usable address).
+  final String? rejection;
 }
 
 /// Rewrites a `launch`/`attach` request's arguments: strips this tool's own
@@ -150,7 +156,11 @@ class LaunchRewriter {
     for (final note in notes) {
       _logger.info(note);
     }
+    final rejection = request == DapCommands.attach
+        ? _attachProblem(args)
+        : null;
     return RewriteResult(
+      rejection: rejection,
       arguments: args,
       ownConfig: own,
       deviceId: deviceId,
@@ -158,6 +168,35 @@ class LaunchRewriter {
       notes: List.unmodifiable(notes),
     );
   }
+
+  /// Why an `attach` cannot work, or null. The adapter needs the address of
+  /// a running app; the placeholder that `flutter_run init` writes is not one.
+  /// Flutter can also wait for an app by itself.
+  String? _attachProblem(Json args) {
+    final uri = _nonBlank(args['vmServiceUri']);
+    // Keep in sync with attachUriPlaceholder in init/templates.dart (dap/
+    // must not import init/).
+    if (uri != null && uri.contains(_placeholderMarker)) {
+      return 'The "vmServiceUri" in this attach configuration is still the '
+          'placeholder from "flutter_run init". Run your app with '
+          '"flutter run", paste the VM service URI it prints (like '
+          'http://127.0.0.1:12345/AbCd=/) into "vmServiceUri", then attach '
+          'again.';
+    }
+    if (uri != null || _nonBlank(args['vmServiceInfoFile']) != null) {
+      return null;
+    }
+    // `flutter attach` waits for an app to start on its own (the "Still
+    // waiting for the app" flow), so only the Dart adapter, which needs an
+    // address, is refused here.
+    if (kind == DapKind.flutter) return null;
+    return 'This attach configuration has no "vmServiceUri" or '
+        '"vmServiceInfoFile". Run your program with the VM service enabled, '
+        'paste the VM service URI it prints into "vmServiceUri", then attach '
+        'again.';
+  }
+
+  static const String _placeholderMarker = 'PORT/TOKEN';
 
   bool _applyMode(String mode, List<Object?> toolArgs, List<String> notes) {
     switch (mode) {

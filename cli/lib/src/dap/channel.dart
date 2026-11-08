@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io' show IOSink;
 
+import '../common/clock.dart';
 import '../common/logger.dart';
+import 'bounded.dart';
 import 'framing.dart';
 import 'messages.dart';
 
@@ -25,7 +27,9 @@ class StreamDapChannel implements DapChannel {
     StreamSink<List<int>> output, {
     Logger? logger,
     String label = '',
+    Clock clock = const SystemClock(),
   }) : _output = output,
+       _clock = clock,
        _logger = logger ?? Logger.silent(),
        _label = label {
     _controller = StreamController<DapJson>(
@@ -58,6 +62,7 @@ class StreamDapChannel implements DapChannel {
   static const Duration _ioTimeout = Duration(seconds: 2);
 
   final StreamSink<List<int>> _output;
+  final Clock _clock;
   final Logger _logger;
   final String _label;
   final DapFrameDecoder _decoder = DapFrameDecoder();
@@ -111,7 +116,12 @@ class StreamDapChannel implements DapChannel {
     final output = _output;
     try {
       if (output is IOSink) {
-        await output.flush().timeout(_ioTimeout, onTimeout: () {});
+        await withTimeout<void>(
+          _clock,
+          output.flush(),
+          _ioTimeout,
+          onTimeout: () {},
+        );
       }
     } on Object catch (e) {
       _logger.debug('Could not flush the $_label channel: $e');
@@ -123,7 +133,12 @@ class StreamDapChannel implements DapChannel {
     if (!_outputClosed) {
       _outputClosed = true;
       try {
-        await _output.close().timeout(_ioTimeout, onTimeout: () {});
+        await withTimeout<void>(
+          _clock,
+          _output.close(),
+          _ioTimeout,
+          onTimeout: () {},
+        );
       } on Object catch (e) {
         _logger.debug('Could not close the $_label channel: $e');
       }

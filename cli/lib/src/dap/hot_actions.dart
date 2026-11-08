@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../common/clock.dart';
 import '../common/json_types.dart';
+import 'bounded.dart';
 import 'messages.dart';
 import 'notices.dart';
 
@@ -116,7 +117,12 @@ class HotActions {
         if (!waitsForRestart) return _busy();
         final done = _clientRestartDone;
         if (done != null) {
-          await done.future.timeout(timeout, onTimeout: () {});
+          await withTimeout<void>(
+            _clock,
+            done.future,
+            timeout,
+            onTimeout: () {},
+          );
         }
         if (_clientRestart) return _busy();
         continue;
