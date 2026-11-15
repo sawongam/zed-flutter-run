@@ -2,7 +2,7 @@ import '../common/json_types.dart';
 import '../common/version.dart';
 
 /// What a running `flutter_run dap` process publishes in its session file
-/// (schema version 1, see the implementation plan section 4.3).
+/// (schema version [sessionFileVersion]).
 class SessionInfo {
   const SessionInfo({
     required this.pid,

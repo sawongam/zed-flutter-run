@@ -2,7 +2,7 @@
 //!
 //! Matching is deliberately narrow. Anything that is not clearly "run a Flutter app" or
 //! "run a Dart file" returns `None`, so tasks like `flutter build`, `flutter test` or
-//! `dart pub get` never get a debug entry. See ADR 0009.
+//! `dart pub get` never get a debug entry.
 
 use serde_json::{Map, Value, json};
 
@@ -11,65 +11,53 @@ pub const LOCATOR_NAME: &str = "FlutterRun";
 /// Zed passes the adapter of the active buffer's language; only ours is served.
 pub const ADAPTER_NAME: &str = "FlutterRun";
 
-/// The parts of Zed's `TaskTemplate` that the locator looks at.
-pub struct TaskInput<'a> {
-    pub command: &'a str,
-    pub args: &'a [String],
-    pub env: &'a [(String, String)],
-    pub cwd: Option<&'a str>,
-    /// Worktree root, when the caller knows it. Zed's locator API does not pass one today.
-    pub worktree_root: Option<&'a str>,
-}
-
 /// Returns the JSON configuration for the scenario, or `None` when the task is not ours.
-pub fn scenario_config(task: &TaskInput) -> Option<Value> {
-    let tokens = tokens(task)?;
+pub fn scenario_config(
+    command: &str,
+    args: &[String],
+    env: &[(String, String)],
+    cwd: Option<&str>,
+) -> Option<Value> {
+    let tokens = tokens(command, args)?;
     let (head, rest) = tokens.split_first()?;
-    let mut parsed = match program_name(head).as_str() {
+    let parsed = match program_name(head).as_str() {
         "flutter" => parse_flutter_run(rest)?,
-        "fvm" | "puro" => {
+        wrapper @ ("fvm" | "puro") => {
             let (flutter, rest) = rest.split_first()?;
             if program_name(flutter) != "flutter" {
                 return None;
             }
-            let mut parsed = parse_flutter_run(rest)?;
-            parsed.use_fvm = program_name(head) == "fvm";
-            parsed
+            Parsed {
+                use_fvm: wrapper == "fvm",
+                ..parse_flutter_run(rest)?
+            }
         }
         "dart" => parse_dart(rest)?,
         _ => return None,
     };
-    parsed.cwd = task.cwd.and_then(|cwd| expand_cwd(cwd, task.worktree_root));
-    parsed.env = task.env.to_vec();
-    Some(parsed.into_config())
+    Some(parsed.into_config(cwd.filter(|c| !has_zed_variable(c)), env))
 }
 
-/// Zed may not substitute `$ZED_*` variables in locator scenarios, so `$ZED_WORKTREE_ROOT` is
-/// replaced here when the root is known. A cwd that still holds a `$ZED_` variable is dropped,
-/// so the launch falls back to the worktree root. ADR 0009.
-fn expand_cwd(cwd: &str, root: Option<&str>) -> Option<String> {
-    let mut out = cwd.to_string();
-    if let Some(root) = root.filter(|r| !r.is_empty()) {
-        out = out
-            .replace("${ZED_WORKTREE_ROOT}", root)
-            .replace("$ZED_WORKTREE_ROOT", root);
-    }
-    (!out.contains("$ZED_") && !out.contains("${ZED_")).then_some(out)
+/// Zed's locator API does not substitute `$ZED_*` variables and passes no worktree root, so a
+/// cwd that still holds one cannot be resolved. It is dropped and the launch falls back to the
+/// worktree root.
+fn has_zed_variable(cwd: &str) -> bool {
+    cwd.contains("$ZED_") || cwd.contains("${ZED_")
 }
 
 /// Command and args as one token list. A command that holds spaces (`flutter run`) is split
 /// on whitespace only when there are no separate args and no quotes; otherwise it is not ours.
-fn tokens(task: &TaskInput) -> Option<Vec<String>> {
-    let command = task.command.trim();
+fn tokens(command: &str, args: &[String]) -> Option<Vec<String>> {
+    let command = command.trim();
     if command.is_empty() {
         return None;
     }
     if !command.contains(char::is_whitespace) {
         let mut all = vec![command.to_string()];
-        all.extend(task.args.iter().cloned());
+        all.extend_from_slice(args);
         return Some(all);
     }
-    if !task.args.is_empty() || command.contains(['"', '\'', '\\']) {
+    if !args.is_empty() || command.contains(['"', '\'', '\\']) {
         return None;
     }
     Some(command.split_whitespace().map(str::to_string).collect())
@@ -96,12 +84,10 @@ struct Parsed {
     tool_args: Vec<String>,
     args: Vec<String>,
     use_fvm: bool,
-    cwd: Option<String>,
-    env: Vec<(String, String)>,
 }
 
 impl Parsed {
-    fn into_config(self) -> Value {
+    fn into_config(self, cwd: Option<&str>, env: &[(String, String)]) -> Value {
         let mut config = Map::new();
         config.insert("request".into(), json!("launch"));
         config.insert(
@@ -126,14 +112,13 @@ impl Parsed {
         if self.use_fvm {
             config.insert("useFvm".into(), json!(true));
         }
-        if let Some(cwd) = self.cwd {
+        if let Some(cwd) = cwd {
             config.insert("cwd".into(), json!(cwd));
         }
-        if !self.env.is_empty() {
-            let env: Map<String, Value> = self
-                .env
-                .into_iter()
-                .map(|(k, v)| (k, Value::String(v)))
+        if !env.is_empty() {
+            let env: Map<String, Value> = env
+                .iter()
+                .map(|(k, v)| (k.clone(), Value::String(v.clone())))
                 .collect();
             config.insert("env".into(), Value::Object(env));
         }
@@ -268,13 +253,7 @@ mod tests {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        scenario_config(&TaskInput {
-            command,
-            args: &args,
-            env: &env,
-            cwd,
-            worktree_root: None,
-        })
+        scenario_config(command, &args, &env, cwd)
     }
 
     #[test]
@@ -421,43 +400,21 @@ mod tests {
     }
 
     #[test]
-    fn zed_variables_in_cwd() {
-        let with_root = |cwd, root| {
-            scenario_config(&TaskInput {
-                command: "flutter",
-                args: &["run".to_string()],
-                env: &[],
-                cwd,
-                worktree_root: root,
-            })
-            .unwrap()
-        };
-        let got = with_root(Some("$ZED_WORKTREE_ROOT/app"), Some("/w"));
-        assert_eq!(got["cwd"], "/w/app");
-        let got = with_root(Some("${ZED_WORKTREE_ROOT}/app"), Some("/w"));
-        assert_eq!(got["cwd"], "/w/app");
-        // no root known: dropped
-        assert!(
-            with_root(Some("$ZED_WORKTREE_ROOT/app"), None)
-                .get("cwd")
-                .is_none()
-        );
-        // other Zed variables are never kept
-        assert!(
-            with_root(Some("$ZED_FILE/.."), Some("/w"))
-                .get("cwd")
-                .is_none()
-        );
-        assert!(
-            with_root(Some("${ZED_DIRNAME}"), Some("/w"))
-                .get("cwd")
-                .is_none()
-        );
-        assert_eq!(with_root(Some("/p"), None)["cwd"], "/p");
-        assert_eq!(
-            run_with("flutter", &["run"], &[], Some("$ZED_WORKTREE_ROOT")),
-            Some(json!({"request":"launch","type":"flutter"}))
-        );
+    fn cwd_with_zed_variables_is_dropped() {
+        let cwd = |cwd| run_with("flutter", &["run"], &[], Some(cwd));
+        for dropped in [
+            "$ZED_WORKTREE_ROOT/app",
+            "${ZED_WORKTREE_ROOT}/app",
+            "$ZED_FILE/..",
+            "${ZED_DIRNAME}",
+        ] {
+            assert_eq!(
+                cwd(dropped),
+                Some(json!({"request":"launch","type":"flutter"})),
+                "{dropped}"
+            );
+        }
+        assert_eq!(cwd("/p").unwrap()["cwd"], "/p");
     }
 
     #[test]
@@ -616,7 +573,10 @@ mod tests {
         let cfg = crate::proxy_args::parse_config(&got.to_string()).unwrap();
         assert!(cfg.use_fvm);
         assert_eq!(cfg.cwd.as_deref(), Some("/p"));
-        assert_eq!(cfg.request, crate::proxy_args::Request::Launch);
+        assert_eq!(
+            cfg.request,
+            zed_extension_api::StartDebuggingRequestArgumentsRequest::Launch
+        );
         let dart = run("dart", &["run", "bin/a.dart"]).unwrap();
         let cfg = crate::proxy_args::parse_config(&dart.to_string()).unwrap();
         assert_eq!(cfg.kind, crate::proxy_args::Kind::Dart);

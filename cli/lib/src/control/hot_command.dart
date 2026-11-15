@@ -93,25 +93,7 @@ abstract class HotActionCommand extends Command<int> {
       );
     }
 
-    final eligible = <SessionRecord>[];
-    for (final record in matching) {
-      final info = record.info;
-      if (info.kind != 'flutter') {
-        _console.err(
-          'Skipped pid ${info.pid}: it is a Dart console session, not a '
-          'Flutter app.',
-        );
-      } else if (record.unresponsive) {
-        _console.err(
-          'Skipped pid ${info.pid}: it did not answer. If Zed is hung, stop '
-          'that debug session.',
-        );
-      } else if (!info.appStarted) {
-        _console.err('pid ${info.pid}: the app is still starting.');
-      } else {
-        eligible.add(record);
-      }
-    }
+    final eligible = _eligibleSessions(matching);
     if (eligible.isEmpty) return ExitCodes.sessionError;
 
     final waiting = _clock.timer(_waitingNoticeAfter, () {
@@ -137,6 +119,30 @@ abstract class HotActionCommand extends Command<int> {
     if (timedOut) return ExitCodes.timeout;
     if (failed) return ExitCodes.sessionError;
     return ExitCodes.ok;
+  }
+
+  /// The sessions that can act now; says on stderr why each other one cannot.
+  List<SessionRecord> _eligibleSessions(List<SessionRecord> matching) {
+    final eligible = <SessionRecord>[];
+    for (final record in matching) {
+      final info = record.info;
+      if (info.kind != 'flutter') {
+        _console.err(
+          'Skipped pid ${info.pid}: it is a Dart console session, not a '
+          'Flutter app.',
+        );
+      } else if (record.unresponsive) {
+        _console.err(
+          'Skipped pid ${info.pid}: it did not answer. If Zed is hung, stop '
+          'that debug session.',
+        );
+      } else if (!info.appStarted) {
+        _console.err('pid ${info.pid}: the app is still starting.');
+      } else {
+        eligible.add(record);
+      }
+    }
+    return eligible;
   }
 
   Duration _parseTimeout() {

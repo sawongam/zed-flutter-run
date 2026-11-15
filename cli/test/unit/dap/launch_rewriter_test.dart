@@ -77,7 +77,7 @@ void main() {
     });
   });
 
-  group('toolArgs hardening (C10)', () {
+  group('toolArgs hardening', () {
     test('a non-list toolArgs is ignored with a note', () {
       final r = rewriter(saved: 's').rewrite('launch', {'toolArgs': '-d x'});
       expect(r.notes.single, contains('toolArgs must be a list'));
@@ -95,7 +95,7 @@ void main() {
     });
   });
 
-  group('S5 device id validation', () {
+  group('device id validation', () {
     LaunchRewriter strict({
       Map<String, String> env = const {},
       String? saved,

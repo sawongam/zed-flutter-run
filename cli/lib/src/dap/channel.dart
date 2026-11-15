@@ -31,7 +31,9 @@ class StreamDapChannel implements DapChannel {
   }) : _output = output,
        _clock = clock,
        _logger = logger ?? Logger.silent(),
-       _label = label {
+       _label = label,
+       _inLabel = '$label<',
+       _outLabel = '$label>' {
     _controller = StreamController<DapJson>(
       onPause: () => _subscription?.pause(),
       onResume: () => _subscription?.resume(),
@@ -67,6 +69,8 @@ class StreamDapChannel implements DapChannel {
   final Clock _clock;
   final Logger _logger;
   final String _label;
+  final String _inLabel;
+  final String _outLabel;
   final DapFrameDecoder _decoder = DapFrameDecoder();
   late final StreamController<DapJson> _controller;
   StreamSubscription<List<int>>? _subscription;
@@ -79,7 +83,7 @@ class StreamDapChannel implements DapChannel {
     if (_controller.isClosed) return;
     try {
       for (final message in _decoder.add(chunk)) {
-        _logger.dap('$_label<', message);
+        _logger.dap(_inLabel, message);
         _controller.add(message);
       }
     } on DapFramingException catch (e) {
@@ -103,7 +107,7 @@ class StreamDapChannel implements DapChannel {
       _logger.error('Dropped a $_label message that could not be encoded', e);
       return;
     }
-    _logger.dap('$_label>', message);
+    _logger.dap(_outLabel, message);
     try {
       _output.add(bytes);
     } on Object catch (e) {
@@ -161,7 +165,8 @@ abstract interface class AdapterConnection {
   /// Already decoded lines; the proxy mirrors and logs them.
   Stream<String> get stderrLines;
 
-  /// POSIX: descendants of the adapter. Windows: just the adapter pid.
+  /// The adapter's current descendants, or just its own pid when the process
+  /// table cannot be read.
   Future<Set<int>> snapshotDescendants();
 
   /// [crashed]: the adapter died on its own, so [extraPids] may include

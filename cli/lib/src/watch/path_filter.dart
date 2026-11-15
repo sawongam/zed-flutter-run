@@ -3,7 +3,7 @@ import 'package:glob/glob.dart';
 import '../common/host_environment.dart';
 import '../common/paths.dart';
 
-/// Decides which file system paths may trigger a reload (ADR 0006 D6).
+/// Decides which file system paths may trigger a reload.
 class PathFilter {
   PathFilter({
     required String projectRoot,
@@ -24,9 +24,9 @@ class PathFilter {
   final String _root;
   final List<Glob> _globs;
 
-  /// Top-level project folders that are never watched or reported (hidden
-  /// segments are ignored at any depth).
-  static const Set<String> ignoredSegments = {
+  /// Top-level project folders that are never watched or reported. Hidden
+  /// segments (starting with a dot) are ignored at any depth.
+  static const Set<String> _ignoredSegments = {
     '.dart_tool',
     'build',
     '.git',
@@ -44,13 +44,6 @@ class PathFilter {
     return _globs.any((g) => g.matches(relative));
   }
 
-  /// True when the path is outside the project or has an ignored segment.
-  bool isIgnored(String absolutePath) {
-    final segments = _relativeSegments(absolutePath);
-    if (segments == null) return true;
-    return _hasIgnoredSegment(segments);
-  }
-
   /// [absolutePath] relative to the project root with `/` separators, or null
   /// when it lies outside the project.
   String? relativePath(String absolutePath) =>
@@ -60,12 +53,11 @@ class PathFilter {
     for (final s in segments) {
       if (s.startsWith('.')) return true;
     }
-    // Generated folders only matter at the top level of the project.
     if (segments.isEmpty) return false;
     final first = _env.pathsCaseInsensitive
         ? segments.first.toLowerCase()
         : segments.first;
-    return ignoredSegments.contains(first);
+    return _ignoredSegments.contains(first);
   }
 
   List<String>? _relativeSegments(String absolutePath) {
@@ -140,7 +132,7 @@ class PathFilter {
     final first = env.pathsCaseInsensitive
         ? prefix.first.toLowerCase()
         : prefix.first;
-    if (ignoredSegments.contains(first)) return null;
+    if (_ignoredSegments.contains(first)) return null;
     for (final s in prefix) {
       if (s == '..' || s.startsWith('.') || s.toLowerCase() == 'pods') {
         return null;

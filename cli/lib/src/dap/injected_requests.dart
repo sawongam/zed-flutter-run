@@ -19,7 +19,8 @@ class InjectedRequest {
 }
 
 /// Allocates sequence numbers for injected requests and swallows their
-/// responses (ADR 0006 D3: client messages are never renumbered).
+/// responses. Client messages are never renumbered; injected and synthetic
+/// numbers start at [firstSeq], far above anything an editor sends.
 class InjectedRequests {
   InjectedRequests({this.firstSeq = 1000000000})
     : _nextInjected = firstSeq,

@@ -58,7 +58,7 @@ class FlutterDevice {
 /// array (banners such as the root-user warning, first-run messages) is
 /// skipped. Throws [ExternalToolException] when no JSON array can be found.
 List<FlutterDevice> parseDevicesMachineOutput(String stdout) {
-  final decoded = decodeLeadingJsonArray(stdout);
+  final decoded = _decodeLeadingJsonArray(stdout);
   if (decoded == null) {
     throw const ExternalToolException(
       'Flutter printed a device list that could not be read.',
@@ -78,9 +78,7 @@ List<FlutterDevice> parseDevicesMachineOutput(String stdout) {
 }
 
 /// Finds the first JSON array in [text], ignoring noise around it.
-List<Object?>? decodeLeadingJsonArray(String text) => _decodeArray(text);
-
-List<Object?>? _decodeArray(String text) {
+List<Object?>? _decodeLeadingJsonArray(String text) {
   final candidates = <int>[];
   for (var i = text.indexOf('['); i >= 0; i = text.indexOf('[', i + 1)) {
     candidates.add(i);

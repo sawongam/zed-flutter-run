@@ -1,22 +1,21 @@
 # Changelog
 
-All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/). The full project changelog is at <https://github.com/sawongam/zed-flutter-run/blob/master/CHANGELOG.md>.
+This project follows [Semantic Versioning](https://semver.org/). The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.0] - unreleased
+## [0.1.0] - Unreleased
 
-The release date will be set when 0.1.0 is published.
+First preview release.
 
 ### Added
-- Zed extension `flutter-run-debugger` registering the debug adapter `FlutterRun`.
-- `flutter_run` CLI and DAP proxy with the commands `dap`, `init`, `reload`, `restart`, `status`, `devices`, `select-device`, `emulators`, `devtools`, `doctor` and `version`.
-- Launch and attach for Flutter apps and Dart programs.
-- Hot reload and hot restart from tasks and key bindings; reload on save (`reloadOnSave`, `reloadOnSaveGlobs`, `reloadOnSaveDebounceMs`).
-- Device picker with a per-user saved device, and emulator launcher.
-- DevTools opener and optional auto-open on start (`openDevTools`).
-- Flutter SDK discovery (explicit path, environment variable, FVM, Puro, `FLUTTER_ROOT`, `PATH`).
-- `init` writes `.zed/debug.json` and `.zed/tasks.json` and prints a keymap snippet.
-- Log file support (`logFile`, `FLUTTER_RUN_LOG`).
-- Documented exit codes.
-- `logFile` / `FLUTTER_RUN_LOG` safety rules: must end in `.log`, existing folder, owner-only file, control characters escaped.
-- Dart programs: hot reload works; hot restart and DevTools are refused with a hint.
-- Hot Reload and Hot Restart tasks save all files first (`"save": "all"`).
+
+- Zed extension `flutter-run-debugger`, which registers the debug adapter `FlutterRun`.
+- `flutter_run`, a command-line tool and debug adapter proxy, with the commands `dap`, `init`, `reload`, `restart`, `status`, `devices`, `select-device`, `emulators`, `devtools`, `doctor` and `version`.
+- Launch and attach for Flutter apps and Dart programs, with breakpoints, stepping, variables and the debug console.
+- Hot reload and hot restart from Zed tasks and key bindings.
+- Hot reload on save (`reloadOnSave`, `reloadOnSaveGlobs`, `reloadOnSaveDebounceMs`).
+- Device picker that remembers the chosen device per project, and an emulator launcher.
+- DevTools in the browser, optionally opened on every launch (`openDevTools`).
+- Flutter SDK discovery: explicit path, `FLUTTER_RUN_FLUTTER_SDK`, FVM, Puro, `FLUTTER_ROOT`, then `PATH`.
+- `flutter_run init`, which writes `.zed/debug.json` and `.zed/tasks.json` and prints a keymap snippet.
+- Debug locator: Zed tasks that run `flutter run` or `dart run <file>.dart` can be started as debug sessions when `FlutterRun` is listed in `languages.Dart.debuggers`.
+- Log file for diagnosis (`logFile`, `FLUTTER_RUN_LOG`).

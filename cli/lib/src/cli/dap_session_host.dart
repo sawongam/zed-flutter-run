@@ -6,6 +6,7 @@ import '../common/host_environment.dart';
 import '../common/json_types.dart';
 import '../common/logger.dart';
 import '../common/paths.dart';
+import '../control/control_protocol.dart';
 import '../control/control_server.dart';
 import '../control/session_info.dart';
 import '../control/session_store.dart';
@@ -19,10 +20,16 @@ import '../devtools/browser_opener.dart';
 import '../sdk/process_spec.dart';
 import '../watch/reload_config.dart';
 import '../watch/reload_on_save_watcher.dart';
-import 'control_endpoint.dart';
 import 'session_notices.dart';
 import 'signal_source.dart';
 import 'wiring.dart';
+
+/// Starts the control server for a session.
+typedef ControlServerStarter =
+    Future<ControlEndpoint> Function({
+      required SessionControl control,
+      Logger? logger,
+    });
 
 /// One running debug session: the proxy plus everything around it (control
 /// server, session file, reload on save, DevTools, signals).
@@ -49,12 +56,10 @@ class DapSessionHost {
   }) : pid = pid ?? io.pid,
        _startControlServer =
            startControlServer ??
-           (({required control, logger}) async => ServerEndpoint(
-             await ControlServer.start(
-               control: control,
-               logger: logger,
-               clock: clock,
-             ),
+           (({required control, logger}) => ControlServer.start(
+             control: control,
+             logger: logger,
+             clock: clock,
            ));
 
   final HostEnvironment env;
@@ -88,6 +93,7 @@ class DapSessionHost {
     resolvedExecutable: resolvedExecutable,
     notice: (text, [level = NoticeLevel.info]) => proxy.notice(text, level),
   );
+  late final Future<void> _controlReady;
   ControlEndpoint? _server;
   SessionHandle? _handle;
   SessionInfo? _info;
@@ -116,7 +122,7 @@ class DapSessionHost {
   }
 
   /// SIGTERM/SIGHUP/SIGINT run the same cleanup as a closed stdin. SIGKILL
-  /// cannot be handled (known issue, ADR 0007 P1).
+  /// cannot be handled, so the adapter's processes may survive it.
   List<StreamSubscription<io.ProcessSignal>> _watchSignals() {
     final subscriptions = <StreamSubscription<io.ProcessSignal>>[];
     for (final signal in [
@@ -156,7 +162,6 @@ class DapSessionHost {
       adapter: adapter,
       options: ProxyOptions(
         kind: kind,
-        cwd: cwd,
         snapshotInterval: env.isWindows
             ? const Duration(seconds: 6)
             : const Duration(seconds: 2),
@@ -176,11 +181,14 @@ class DapSessionHost {
     control = ProxySessionControl(proxy.hotActions, pid: pid);
     _proxyReady = true;
     if (_signalReason != null) _shutdownForSignal();
-    await _startControl();
+    // The control server and session file are only needed once the app runs,
+    // so they must not delay the first message from the editor.
+    _controlReady = _startControl();
     _events = proxy.events.listen(_onEvent);
 
     final code = await proxy.run();
 
+    await _controlReady;
     await _onShutdownStarted();
     await _onShutdownCleanup();
     // Not awaited: cancelling a plain in-process subscription does no I/O.
@@ -219,8 +227,6 @@ class DapSessionHost {
           'debug session ($e). Debugging itself still works.';
     }
   }
-
-  // ------------------------------------------------------------- shutdown
 
   Future<void> _onShutdownStarted() async {
     if (_ending) return;
@@ -265,12 +271,10 @@ class DapSessionHost {
     _server = null;
   }
 
-  // --------------------------------------------------------------- events
-
   void _onEvent(ProxyEvent event) {
     switch (event) {
       case LaunchRewritten():
-        _onLaunch(event);
+        unawaited(_onLaunch(event));
       case StateChanged():
         _scheduleSessionWrite();
       case DebuggerUris():
@@ -286,10 +290,11 @@ class DapSessionHost {
     }
   }
 
-  void _onLaunch(LaunchRewritten event) {
+  Future<void> _onLaunch(LaunchRewritten event) async {
     _ownConfig = event.result.ownConfig;
     if (!_startNoticesShown) {
       _startNoticesShown = true;
+      await _controlReady; // [_setupProblem] is known once it completes.
       _notices.showStart(event.result, setupProblem: _setupProblem);
     }
     if (event.request == 'attach') {
@@ -303,8 +308,6 @@ class DapSessionHost {
       });
     }
   }
-
-  // ---------------------------------------------------------- session file
 
   void _scheduleSessionWrite() {
     if (_handle == null || _ending) return;
@@ -333,8 +336,6 @@ class DapSessionHost {
       logger.warn('Could not update the session file: $e');
     }
   }
-
-  // ------------------------------------------------------- reload on save
 
   Future<void> _armWatcher() async {
     try {

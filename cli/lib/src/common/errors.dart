@@ -59,14 +59,8 @@ class RequestTimeoutException extends FlutterRunException {
 
 /// Flutter/Dart SDK could not be resolved (exit 6).
 class SdkNotFoundException extends FlutterRunException {
-  const SdkNotFoundException(
-    super.message, {
-    this.tried = const <String>[],
-    super.hint,
-  }) : super(exitCode: ExitCodes.sdkNotFound);
-
-  /// Human-readable descriptions of every location that was tried.
-  final List<String> tried;
+  const SdkNotFoundException(super.message, {super.hint})
+    : super(exitCode: ExitCodes.sdkNotFound);
 }
 
 /// No devices or an unknown device id (exit 7).

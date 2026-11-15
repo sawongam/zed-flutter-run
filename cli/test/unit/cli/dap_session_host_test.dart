@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fake_async/fake_async.dart';
-import 'package:flutter_run/src/cli/control_endpoint.dart';
 import 'package:flutter_run/src/cli/dap_session_host.dart';
 import 'package:flutter_run/src/common/clock.dart';
 import 'package:flutter_run/src/common/errors.dart';

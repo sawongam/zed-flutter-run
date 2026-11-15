@@ -27,7 +27,7 @@ class Harness {
     proxy = DapProxy(
       client: client,
       adapter: adapter,
-      options: options ?? ProxyOptions(kind: kind, cwd: '/proj'),
+      options: options ?? ProxyOptions(kind: kind),
       clock: clock,
       rewriter: LaunchRewriter(
         kind: kind,

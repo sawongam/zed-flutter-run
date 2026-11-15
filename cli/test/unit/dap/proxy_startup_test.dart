@@ -82,39 +82,32 @@ void main() {
   });
 
   group('initialize timeout', () {
-    test(
-      'R4: a slow start gets one notice at 10 s and fails only at 120 s',
-      () {
-        fakeAsync((fa) {
-          final h = Harness();
-          h.request(1, 'initialize', {});
-          fa.flushMicrotasks();
-          fa.elapse(const Duration(seconds: 9));
-          expect(h.client.sent, isEmpty);
-          fa.elapse(const Duration(seconds: 2));
-          expect(
-            h.client.outputs.single,
-            contains('Flutter is still starting'),
-          );
-          fa.elapse(const Duration(seconds: 100));
-          expect(h.client.outputs, hasLength(1));
-          expect(h.exitCode, isNull);
-          fa.elapse(const Duration(seconds: 15));
-          expect(
-            h.client.sentWhere('response', 'initialize').single['success'],
-            isFalse,
-          );
-          expect(h.exitCode, 1);
-        });
-      },
-    );
+    test('a slow start gets one notice at 10 s and fails only at 120 s', () {
+      fakeAsync((fa) {
+        final h = Harness();
+        h.request(1, 'initialize', {});
+        fa.flushMicrotasks();
+        fa.elapse(const Duration(seconds: 9));
+        expect(h.client.sent, isEmpty);
+        fa.elapse(const Duration(seconds: 2));
+        expect(h.client.outputs.single, contains('Flutter is still starting'));
+        fa.elapse(const Duration(seconds: 100));
+        expect(h.client.outputs, hasLength(1));
+        expect(h.exitCode, isNull);
+        fa.elapse(const Duration(seconds: 15));
+        expect(
+          h.client.sentWhere('response', 'initialize').single['success'],
+          isFalse,
+        );
+        expect(h.exitCode, 1);
+      });
+    });
 
     test('no response in 10 s fails the request, notifies and exits 1', () {
       fakeAsync((fa) {
         final h = Harness(
           options: const ProxyOptions(
             kind: DapKind.flutter,
-            cwd: '/proj',
             initializeTimeout: Duration(seconds: 10),
             initializeNoticeAfter: Duration(seconds: 20),
           ),

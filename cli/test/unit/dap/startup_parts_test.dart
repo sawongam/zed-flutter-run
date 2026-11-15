@@ -71,7 +71,6 @@ void main() {
   group('StderrTail', () {
     test('keeps only the last lines', () {
       final tail = StderrTail(maxLines: 2);
-      expect(tail.isEmpty, isTrue);
       expect(tail.last, isNull);
       tail
         ..add('a')

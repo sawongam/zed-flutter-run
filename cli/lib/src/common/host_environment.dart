@@ -2,7 +2,18 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-enum HostOs { linux, macos, windows }
+enum HostOs {
+  linux,
+  macos,
+  windows;
+
+  /// The operating system this process runs on.
+  static HostOs get current => Platform.isWindows
+      ? windows
+      : Platform.isMacOS
+      ? macos
+      : linux;
+}
 
 /// The operating system, environment variables and working directory, passed
 /// explicitly so that Windows rules can be tested on any host.
@@ -16,11 +27,7 @@ class HostEnvironment {
        _homeOverride = homeOverride;
 
   factory HostEnvironment.system() => HostEnvironment(
-    os: Platform.isWindows
-        ? HostOs.windows
-        : Platform.isMacOS
-        ? HostOs.macos
-        : HostOs.linux,
+    os: HostOs.current,
     environment: Platform.environment,
     currentDirectory: Directory.current.path,
   );

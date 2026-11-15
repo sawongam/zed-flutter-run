@@ -3,12 +3,6 @@ import '../common/json_types.dart';
 /// A decoded DAP message (request, response or event).
 typedef DapJson = Map<String, Object?>;
 
-bool isRequest(DapJson m) => m['type'] == 'request';
-
-bool isResponse(DapJson m) => m['type'] == 'response';
-
-bool isEvent(DapJson m) => m['type'] == 'event';
-
 /// DAP commands the proxy reads or sends itself.
 abstract final class DapCommands {
   static const String initialize = 'initialize';
@@ -47,8 +41,6 @@ extension type const DapMessage(DapJson raw) {
   String? get command => _string(raw['command']);
 
   Object? get requestSeq => raw['request_seq'];
-
-  bool get success => raw['success'] == true;
 
   /// True only for an explicit `success: false`.
   bool get failed => raw['success'] == false;

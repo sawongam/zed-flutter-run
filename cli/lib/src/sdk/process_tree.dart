@@ -39,6 +39,7 @@ class ProcessTable {
 
   final Map<int, ProcessInfo> byPid;
 
+  /// Parent pid -> child pids.
   Map<int, List<int>> get childrenOf {
     final map = <int, List<int>>{};
     for (final r in byPid.values) {
@@ -51,21 +52,6 @@ class ProcessTable {
     }
     return map;
   }
-}
-
-/// Parses `pid ppid ...` lines (extra columns ignored) into a parent -> children
-/// map. Malformed lines are skipped.
-Map<int, List<int>> parsePsOutput(String psOutput) {
-  final map = <int, List<int>>{};
-  for (final line in psOutput.split('\n')) {
-    final parts = line.trim().split(RegExp(r'\s+'));
-    if (parts.length < 2) continue;
-    final pid = int.tryParse(parts[0]);
-    final ppid = int.tryParse(parts[1]);
-    if (pid == null || ppid == null) continue;
-    (map[ppid] ??= <int>[]).add(pid);
-  }
-  return map;
 }
 
 /// Parses `pid ppid stat start...` lines (the format [readProcessTable] asks
@@ -379,8 +365,7 @@ Future<void> killTree(
   final read = readTable ?? () => readProcessTable(env);
   final SignalSender send = sendSignal ?? Process.killPid;
 
-  Future<Set<int>> eligible() async {
-    final table = await read();
+  Set<int> eligibleIn(ProcessTable table) {
     final descendants = rootPid <= 1
         ? <int>{}
         : collectDescendants(table.childrenOf, rootPid);
@@ -402,6 +387,8 @@ Future<void> killTree(
     return out;
   }
 
+  Future<Set<int>> eligible() async => eligibleIn(await read());
+
   if (env.isWindows) {
     final run = runProcess ?? Process.run;
     Future<void> taskkill(int pid, {required bool tree}) async {
@@ -415,8 +402,9 @@ Future<void> killTree(
     // With a readable process table only provably-ours pids are killed
     // (PID-reuse guard by creation date). /T is used for the root while it is
     // alive, so its tree goes with it.
-    final first = await eligible();
-    if (first.isEmpty && (await read()).byPid.isEmpty) {
+    final table = await read();
+    final first = eligibleIn(table);
+    if (first.isEmpty && table.byPid.isEmpty) {
       // No table (PowerShell and wmic unavailable): best effort by pid.
       for (final pid in <int>{rootPid, ...snapshot}) {
         if (pid > 4) await taskkill(pid, tree: true);

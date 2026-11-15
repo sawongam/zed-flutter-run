@@ -6,7 +6,6 @@ import '../../common/console.dart';
 import '../../common/errors.dart';
 import '../../common/global_options.dart';
 import '../../common/host_environment.dart';
-import '../../common/paths.dart';
 import '../device_lister.dart';
 import '../device_store.dart';
 import '../flutter_device.dart';
@@ -45,8 +44,7 @@ class DevicesCommand extends Command<int> {
   @override
   Future<int> run() async {
     final options = GlobalOptions.of(this);
-    final found = findProjectRootFor(options.project, _env);
-    final root = found == null ? null : canonicalDirectory(found, _env);
+    final root = findProjectRootFor(options.project, _env);
     final dir = root ?? options.project ?? _env.currentDirectory;
     final saved = root == null ? null : _store.readSync(root);
 

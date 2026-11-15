@@ -33,14 +33,13 @@ void main() {
     cases.forEach((e, code) => expect(e.exitCode, code, reason: '$e'));
   });
 
-  test('message, hint, cause and tried are kept', () {
+  test('message, hint and cause are kept', () {
     const cause = FormatException('bad');
     const e = ExternalToolException('failed', hint: 'Try again.', cause: cause);
     expect(e.toString(), 'failed');
     expect(e.hint, 'Try again.');
     expect(e.cause, cause);
-    const s = SdkNotFoundException('none', tried: ['a', 'b']);
-    expect(s.tried, ['a', 'b']);
+    const s = SdkNotFoundException('none');
     expect(s, isA<FlutterRunException>());
   });
 }

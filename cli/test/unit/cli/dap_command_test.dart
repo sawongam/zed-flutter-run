@@ -300,7 +300,7 @@ void main() {
     );
   });
 
-  group('signals (R3)', () {
+  group('signals', () {
     for (final signal in [
       ProcessSignal.sigint,
       if (!Platform.isWindows) ProcessSignal.sigterm,

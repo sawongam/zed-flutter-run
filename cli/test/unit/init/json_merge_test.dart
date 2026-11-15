@@ -94,11 +94,4 @@ void main() {
     expect(r, isA<MergeNeedsManual>());
     expect((r as MergeNeedsManual).reason, contains('not a JSON array'));
   });
-
-  test('isStrictJson', () {
-    expect(isStrictJson('[]'), isTrue);
-    expect(isStrictJson('[1,]'), isFalse);
-    expect(isStrictJson('// c\n[]'), isFalse);
-    expect(isStrictJson(''), isFalse);
-  });
 }

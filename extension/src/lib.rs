@@ -2,12 +2,7 @@
 //! All logic lives in the plain modules below so it can be unit-tested on the host.
 #![cfg_attr(
     test,
-    allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::assert_is_empty,
-        clippy::unnecessary_wraps
-    )
+    allow(clippy::unwrap_used, clippy::expect_used, clippy::assert_is_empty)
 )]
 
 mod checksums;
@@ -15,8 +10,8 @@ mod install;
 mod locator;
 mod proxy_args;
 
-use install::{Arch, CachedBinary, DownloadSupport, InstallError, InstallPlan, Os, PlanInput};
-use proxy_args::{LaunchSpec, Request};
+use install::{PROXY_VERSION, Selection};
+use proxy_args::LaunchSpec;
 use std::path::Path;
 use zed_extension_api::{self as zed, Result};
 
@@ -26,185 +21,122 @@ struct FlutterRunExtension {
     verified: Option<String>,
 }
 
-fn host_os() -> Os {
-    match zed::current_platform().0 {
-        zed::Os::Mac => Os::Mac,
-        zed::Os::Linux => Os::Linux,
-        zed::Os::Windows => Os::Windows,
-    }
+fn io_error(what: &str, e: &std::io::Error) -> String {
+    format!("{what}: {e}.")
 }
 
-fn host_arch() -> Arch {
-    match zed::current_platform().1 {
-        zed::Architecture::Aarch64 => Arch::Aarch64,
-        zed::Architecture::X8664 => Arch::X8664,
-        zed::Architecture::X86 => Arch::X86,
-    }
-}
-
-fn to_request_kind(request: Request) -> zed::StartDebuggingRequestArgumentsRequest {
-    match request {
-        Request::Launch => zed::StartDebuggingRequestArgumentsRequest::Launch,
-        Request::Attach => zed::StartDebuggingRequestArgumentsRequest::Attach,
-    }
-}
-
-fn absolute(path: &Path) -> Result<String, InstallError> {
+/// The extension's working directory is the only place it may write, so paths are made absolute
+/// against it before they are handed to Zed.
+fn absolute(path: &Path) -> Result<String> {
     let cwd =
         std::env::current_dir().map_err(|e| io_error("Cannot read the working directory", &e))?;
     Ok(cwd.join(path).to_string_lossy().into_owned())
 }
 
-fn io_error(what: &str, e: &std::io::Error) -> InstallError {
-    InstallError::Io(format!("{what}: {e}."))
-}
-
-fn download_support(os: Os, arch: Arch) -> DownloadSupport {
-    match install::asset_name(install::PROXY_VERSION, os, arch) {
-        Err(text) => DownloadSupport::Unsupported(text),
-        Ok(asset) => match checksums::pinned_sha256(&asset) {
-            Some(sum) => DownloadSupport::Pinned(sum.to_string()),
-            None if checksums::PINNED_SHA256.is_empty() => DownloadSupport::NoPins,
-            None => DownloadSupport::NotPinned,
-        },
+/// Release asset for this platform and the checksum pinned for it.
+fn pinned_download(os: zed::Os, arch: zed::Architecture) -> Result<(String, &'static str)> {
+    let asset = install::asset_name(PROXY_VERSION, os, arch)?;
+    match checksums::pinned_sha256(&asset) {
+        Some(sum) => Ok((asset, sum)),
+        None => Err(install::missing_pin_message(
+            checksums::PINNED_SHA256.is_empty(),
+        )),
     }
 }
 
-/// Names of the entries of `dir` (empty when it cannot be read).
-fn entry_names(dir: &str) -> Vec<String> {
+/// Names of the entries of `dir` (none when it cannot be read).
+fn entry_names(dir: &str) -> impl Iterator<Item = String> {
     std::fs::read_dir(dir)
-        .map(|entries| {
-            entries
-                .flatten()
-                .filter_map(|e| e.file_name().to_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| entry.file_name().into_string().ok())
 }
 
-fn borrowed(names: &[String]) -> Vec<&str> {
-    names.iter().map(String::as_str).collect()
+/// Downloads `asset` to `part` and checks it against `expected`.
+fn fetch_verified(asset: &str, part: &str, expected: &str) -> Result<()> {
+    let url = install::download_url(PROXY_VERSION, asset);
+    zed::download_file(&url, part, zed::DownloadedFileType::Uncompressed)
+        .map_err(|detail| install::download_failed_message(PROXY_VERSION, &detail))?;
+    let bytes = std::fs::read(part).map_err(|e| io_error(&format!("Cannot read {part}"), &e))?;
+    install::verify_sha256(&bytes, expected)
+}
+
+/// Downloads, verifies and installs the binary; removes the temp file on every failure.
+fn download_and_install(
+    os: zed::Os,
+    binary: &Path,
+    binary_str: &str,
+    asset: &str,
+    expected: &str,
+) -> Result<()> {
+    let dir = install::install_dir(PROXY_VERSION);
+    std::fs::create_dir_all(&dir).map_err(|e| io_error(&format!("Cannot create {dir}"), &e))?;
+    for name in entry_names(&dir).filter(|n| install::is_part_file(n)) {
+        let _ = std::fs::remove_file(Path::new(&dir).join(name));
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let part = install::part_path(PROXY_VERSION, os, nanos);
+    let result = fetch_verified(asset, &part.to_string_lossy(), expected).and_then(|()| {
+        std::fs::rename(&part, binary)
+            .map_err(|e| io_error("Cannot move the downloaded file into place", &e))
+    });
+    if result.is_err() {
+        let _ = std::fs::remove_file(&part);
+    }
+    result?;
+    zed::make_file_executable(binary_str)?;
+    // Older versions' directories are no longer needed.
+    let stale: Vec<String> = entry_names(".")
+        .filter(|n| install::is_stale_install_dir(n, PROXY_VERSION))
+        .collect();
+    for name in stale {
+        let _ = std::fs::remove_dir_all(name);
+    }
+    Ok(())
 }
 
 impl FlutterRunExtension {
-    /// Looks at the disk (thin I/O) and reports the state of the cached binary.
-    fn cached_binary(&self, binary: &Path, binary_str: &str, expected: &str) -> CachedBinary {
-        if !binary.exists() {
-            return CachedBinary::Missing;
-        }
-        if self.verified.as_deref() == Some(binary_str) {
-            return CachedBinary::VerifiedThisSession;
-        }
-        match std::fs::read(binary) {
-            Ok(bytes) if install::verify_sha256(&bytes, expected).is_ok() => CachedBinary::Verified,
-            _ => CachedBinary::Corrupt,
-        }
-    }
-
-    /// Downloads, verifies and installs the binary; removes the temp file on every failure.
-    fn download_and_install(
-        os: Os,
-        arch: Arch,
-        binary: &Path,
-        binary_str: &str,
-        expected: &str,
-    ) -> Result<(), InstallError> {
-        let version = install::PROXY_VERSION;
-        let asset =
-            install::asset_name(version, os, arch).map_err(InstallError::UnsupportedPlatform)?;
-        let dir = install::install_dir(version);
-        std::fs::create_dir_all(&dir).map_err(|e| io_error(&format!("Cannot create {dir}"), &e))?;
-        let names = entry_names(&dir);
-        for name in install::leftover_part_files(&borrowed(&names)) {
-            let _ = std::fs::remove_file(Path::new(&dir).join(name));
-        }
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos());
-        let part = install::part_path(version, os, nanos);
-        let part_str = part.to_string_lossy().into_owned();
-        let result = Self::fetch_part(&asset, &part_str, expected).and_then(|()| {
-            std::fs::rename(&part, binary)
-                .map_err(|e| io_error("Cannot move the downloaded file into place", &e))
-        });
-        if result.is_err() {
-            let _ = std::fs::remove_file(&part);
-        }
-        result?;
-        zed::make_file_executable(binary_str).map_err(InstallError::Io)?;
-        let names = entry_names(".");
-        for name in install::stale_install_dirs(&borrowed(&names), version) {
-            let _ = std::fs::remove_dir_all(name);
-        }
-        Ok(())
-    }
-
-    fn fetch_part(asset: &str, part: &str, expected: &str) -> Result<(), InstallError> {
-        let version = install::PROXY_VERSION;
-        let url = install::download_url(version, asset);
-        zed::download_file(&url, part, zed::DownloadedFileType::Uncompressed).map_err(
-            |detail| InstallError::DownloadFailed {
-                version: version.to_string(),
-                detail,
-            },
-        )?;
-        let bytes =
-            std::fs::read(part).map_err(|e| io_error(&format!("Cannot read {part}"), &e))?;
-        install::verify_sha256(&bytes, expected)
-    }
-
+    /// Finds the proxy: the user setting, then PATH, then the pinned download.
     fn resolve_command(
         &mut self,
         user: Option<String>,
         worktree: &zed::Worktree,
-    ) -> Result<String, InstallError> {
-        let os = host_os();
-        let (which_exe, which_plain) = if os == Os::Windows {
-            (
-                worktree.which("flutter_run.exe"),
-                worktree.which("flutter_run"),
-            )
-        } else {
-            (None, worktree.which("flutter_run"))
+    ) -> Result<String> {
+        let (os, arch) = zed::current_platform();
+        let path_hits: Vec<String> = install::path_lookup_names(os)
+            .iter()
+            .filter_map(|name| worktree.which(name))
+            .collect();
+        let shim = match install::select_command(user, &path_hits, os) {
+            Selection::Use(command) => return Ok(command),
+            Selection::OnlyBatchShim(path) => Some(path),
+            Selection::Nothing => None,
         };
-        let arch = host_arch();
-        let download = download_support(os, arch);
-        let binary = install::binary_path(install::PROXY_VERSION, os);
-        // The absolute path and the cached file's hash are only needed when neither the user
-        // setting nor PATH wins; otherwise a failing current_dir() must not block a valid path.
-        let mut binary_str = String::new();
-        let mut cached = CachedBinary::Missing;
-        if install::needs_cached_binary(user.as_ref(), which_exe.as_ref(), which_plain.as_ref(), os)
-        {
-            binary_str = absolute(&binary)?;
-            if let DownloadSupport::Pinned(expected) = &download {
-                cached = self.cached_binary(&binary, &binary_str, expected);
+        // A rejected wrapper explains the problem better than "not found".
+        let (asset, expected) = pinned_download(os, arch)
+            .map_err(|e| shim.map_or(e, |path| install::batch_shim_message(&path)))?;
+
+        let binary = install::binary_path(PROXY_VERSION, os);
+        let binary_str = absolute(&binary)?;
+        if binary.exists() {
+            if self.verified.as_deref() == Some(&binary_str) {
+                return Ok(binary_str);
             }
-        }
-        let plan = install::plan_install(PlanInput {
-            user,
-            which_exe,
-            which_plain,
-            os,
-            download,
-            cached,
-        });
-        match plan {
-            InstallPlan::UseCommand(command) => Ok(command),
-            InstallPlan::Fail(e) => Err(e),
-            InstallPlan::UseCached { make_executable } => {
-                if make_executable {
-                    zed::make_file_executable(&binary_str).map_err(InstallError::Io)?;
-                }
+            let intact = std::fs::read(&binary)
+                .is_ok_and(|bytes| install::verify_sha256(&bytes, expected).is_ok());
+            if intact {
+                zed::make_file_executable(&binary_str)?;
                 self.verified = Some(binary_str.clone());
-                Ok(binary_str)
+                return Ok(binary_str);
             }
-            InstallPlan::Download { expected } => {
-                Self::download_and_install(os, arch, &binary, &binary_str, &expected)?;
-                self.verified = Some(binary_str.clone());
-                Ok(binary_str)
-            }
+            // A truncated or tampered file is replaced, never executed.
         }
+        download_and_install(os, &binary, &binary_str, &asset, expected)?;
+        self.verified = Some(binary_str.clone());
+        Ok(binary_str)
     }
 }
 
@@ -222,18 +154,17 @@ impl zed::Extension for FlutterRunExtension {
     ) -> Result<zed::DebugAdapterBinary> {
         let cfg = proxy_args::parse_config(&config.config)?;
         let cwd = proxy_args::resolve_cwd(cfg.cwd.as_deref(), &worktree.root_path());
-        let command = self
-            .resolve_command(user_provided_debug_adapter_path, worktree)
-            .map_err(String::from)?;
+        let command = self.resolve_command(user_provided_debug_adapter_path, worktree)?;
+        let is_windows = zed::current_platform().0 == zed::Os::Windows;
         Ok(zed::DebugAdapterBinary {
             command: Some(command),
-            arguments: proxy_args::build_proxy_args(&cfg, &cwd, install::PROXY_VERSION),
-            envs: proxy_args::merge_env(&worktree.shell_env(), &cfg.env, host_os() == Os::Windows),
+            arguments: proxy_args::build_proxy_args(&cfg, &cwd, PROXY_VERSION),
+            envs: proxy_args::merge_env(&worktree.shell_env(), &cfg.env, is_windows),
             cwd: Some(cwd),
             connection: None,
             request_args: zed::StartDebuggingRequestArguments {
                 configuration: config.config,
-                request: to_request_kind(cfg.request),
+                request: cfg.request,
             },
         })
     }
@@ -243,30 +174,25 @@ impl zed::Extension for FlutterRunExtension {
         _adapter_name: String,
         config: zed::serde_json::Value,
     ) -> Result<zed::StartDebuggingRequestArgumentsRequest> {
-        proxy_args::request_kind(&config).map(to_request_kind)
+        proxy_args::request_kind(&config)
     }
 
     fn dap_config_to_scenario(&mut self, config: zed::DebugConfig) -> Result<zed::DebugScenario> {
-        let spec = match &config.request {
-            zed::DebugRequest::Launch(l) => proxy_args::config_to_scenario(
-                &config.label,
-                Some(LaunchSpec {
-                    program: &l.program,
-                    cwd: l.cwd.as_deref(),
-                    args: &l.args,
-                    envs: &l.envs,
-                }),
-                config.stop_on_entry,
-            ),
-            zed::DebugRequest::Attach(_) => {
-                proxy_args::config_to_scenario(&config.label, None, config.stop_on_entry)
-            }
-        }?;
+        let launch = match &config.request {
+            zed::DebugRequest::Launch(l) => Some(LaunchSpec {
+                program: &l.program,
+                cwd: l.cwd.as_deref(),
+                args: &l.args,
+                envs: &l.envs,
+            }),
+            zed::DebugRequest::Attach(_) => None,
+        };
+        let scenario = proxy_args::config_to_scenario(launch, config.stop_on_entry)?;
         Ok(zed::DebugScenario {
-            label: spec.label,
-            adapter: spec.adapter,
+            label: config.label,
+            adapter: locator::ADAPTER_NAME.to_string(),
             build: None,
-            config: spec.config.to_string(),
+            config: scenario.to_string(),
             tcp_connection: None,
         })
     }
@@ -281,14 +207,12 @@ impl zed::Extension for FlutterRunExtension {
         if locator_name != locator::LOCATOR_NAME || debug_adapter_name != locator::ADAPTER_NAME {
             return None;
         }
-        let config = locator::scenario_config(&locator::TaskInput {
-            command: &build_task.command,
-            args: &build_task.args,
-            env: &build_task.env,
-            cwd: build_task.cwd.as_deref(),
-            // Zed's locator API passes no worktree, so `$ZED_WORKTREE_ROOT` cannot be expanded.
-            worktree_root: None,
-        })?;
+        let config = locator::scenario_config(
+            &build_task.command,
+            &build_task.args,
+            &build_task.env,
+            build_task.cwd.as_deref(),
+        )?;
         Some(zed::DebugScenario {
             label: resolved_label,
             adapter: debug_adapter_name,

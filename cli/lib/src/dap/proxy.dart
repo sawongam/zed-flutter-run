@@ -26,7 +26,7 @@ export 'proxy_options.dart';
 ///
 /// Client messages pass through untouched except `launch`/`attach` arguments;
 /// injected requests use a disjoint sequence range; shutdown follows Zed's
-/// real stop path (ADR 0006 D2) and lives in [ShutdownCoordinator].
+/// real stop path and lives in [ShutdownCoordinator].
 class DapProxy implements RequestInjector {
   DapProxy({
     required DapChannel client,
@@ -46,7 +46,6 @@ class DapProxy implements RequestInjector {
     _phase = SessionPhaseMachine(logger: _log);
     _tracker = SessionTracker(
       kind: options.kind,
-      cwd: options.cwd,
       onNotice: notice,
       onProcessActivity: () => _coordinator.refreshSnapshot(),
     );

@@ -34,7 +34,6 @@ void main() {
       });
       expect(response.isResponse, isTrue);
       expect(response.requestSeq, 9);
-      expect(response.success, isFalse);
       expect(response.failed, isTrue);
       expect(response.body, {'error': 1});
 
@@ -70,7 +69,6 @@ void main() {
         expect(m.arguments, isEmpty);
         expect(m.body, isEmpty);
         expect(m.isRequest, isFalse);
-        expect(m.success, isFalse);
         expect(m.failed, isFalse);
       },
     );

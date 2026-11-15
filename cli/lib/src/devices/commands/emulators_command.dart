@@ -6,7 +6,6 @@ import '../../common/console.dart';
 import '../../common/errors.dart';
 import '../../common/global_options.dart';
 import '../../common/host_environment.dart';
-import '../../common/paths.dart';
 import '../device_lister.dart';
 import '../device_store.dart';
 import '../emulators.dart';
@@ -50,15 +49,9 @@ class EmulatorsCommand extends Command<int> {
     if (launchId != null && json) {
       throw const UsageError('Use either --launch or --json, not both.');
     }
-    if (launchId != null && !safeEmulatorIdPattern.hasMatch(launchId)) {
-      throw UsageError(
-        'The emulator id "$launchId" is not valid.',
-        hint: 'Run "flutter_run emulators" to see the available ids.',
-      );
-    }
+    if (launchId != null) requireSafeEmulatorId(launchId);
 
-    final found = findProjectRootFor(options.project, _env);
-    final root = found == null ? null : canonicalDirectory(found, _env);
+    final root = findProjectRootFor(options.project, _env);
     final dir = root ?? options.project ?? _env.currentDirectory;
     final run = await _runnerFor(
       projectDir: dir,

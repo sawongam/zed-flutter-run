@@ -51,7 +51,6 @@ class ProxyTimings {
 class ProxyOptions {
   const ProxyOptions({
     required this.kind,
-    required this.cwd,
     this.terminateTimeout = const Duration(seconds: 5),
     this.exitWait = const Duration(seconds: 5),
     this.initializeTimeout = const Duration(seconds: 120),
@@ -61,7 +60,6 @@ class ProxyOptions {
   });
 
   final DapKind kind;
-  final String cwd;
 
   /// Upper bound for the adapter to finish a `terminate` (also used for the
   /// injected one).
@@ -74,7 +72,7 @@ class ProxyOptions {
   final Duration initializeTimeout;
 
   /// After this long without an `initialize` answer, one notice says that
-  /// Flutter is still starting (ADR 0007 P2).
+  /// Flutter is still starting.
   final Duration initializeNoticeAfter;
 
   /// How often the adapter's descendants are recorded while it runs (reading

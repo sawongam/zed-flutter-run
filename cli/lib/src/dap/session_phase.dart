@@ -33,9 +33,6 @@ class SessionPhaseMachine {
 
   SessionPhase get phase => _phase;
 
-  /// A stop was requested (or the session is already past that).
-  bool get isStopping => _phase.index >= SessionPhase.stopping.index;
-
   /// The final teardown has begun (or is done).
   bool get isFinishing => _phase.index >= SessionPhase.finishing.index;
 

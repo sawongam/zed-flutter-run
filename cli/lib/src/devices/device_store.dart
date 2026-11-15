@@ -47,7 +47,7 @@ class SavedDevice {
   };
 }
 
-/// Saved device per project, in the per-user state directory (ADR 0006 D7).
+/// Saved device per project, in the per-user state directory.
 class DeviceStore {
   DeviceStore(this._env, {Logger? logger, Clock clock = const SystemClock()})
     : _logger = logger ?? Logger.silent(),

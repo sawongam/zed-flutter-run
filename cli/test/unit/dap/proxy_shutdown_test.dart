@@ -160,26 +160,23 @@ void main() {
       },
     );
 
-    test(
-      'R1: an adapter that exits by itself after terminate is not killed',
-      () {
-        fakeAsync((fa) {
-          final h = started(fa);
-          h.request(10, 'terminate');
-          fa.flushMicrotasks();
-          h.adapter.respond(h.adapter.lastRequest('terminate'));
-          h.adapter.event('terminated');
-          fa.elapse(const Duration(milliseconds: 200));
-          h.adapter.die(0);
-          fa.elapse(const Duration(seconds: 3));
-          expect(h.adapter.terminateTreeCalls, isEmpty);
-          expect(h.client.sentWhere('response', 'terminate'), hasLength(1));
-        });
-      },
-    );
+    test('an adapter that exits by itself after terminate is not killed', () {
+      fakeAsync((fa) {
+        final h = started(fa);
+        h.request(10, 'terminate');
+        fa.flushMicrotasks();
+        h.adapter.respond(h.adapter.lastRequest('terminate'));
+        h.adapter.event('terminated');
+        fa.elapse(const Duration(milliseconds: 200));
+        h.adapter.die(0);
+        fa.elapse(const Duration(seconds: 3));
+        expect(h.adapter.terminateTreeCalls, isEmpty);
+        expect(h.client.sentWhere('response', 'terminate'), hasLength(1));
+      });
+    });
 
     test(
-      'R1: a still-alive adapter with no descendants is killed before the response',
+      'a still-alive adapter with no descendants is killed before the response',
       () {
         fakeAsync((fa) {
           final h = started(fa);
@@ -199,7 +196,7 @@ void main() {
       },
     );
 
-    test('R2: a normal stop signals only current descendants, not history', () {
+    test('a normal stop signals only current descendants, not history', () {
       fakeAsync((fa) {
         final h = started(fa);
         h.adapter.descendants = {31, 32}; // seen by polls
@@ -347,7 +344,7 @@ void main() {
     );
 
     test(
-      'C8: an answered disconnect is released after a short grace even if the adapter lingers',
+      'an answered disconnect is released after a short grace even if the adapter lingers',
       () {
         fakeAsync((fa) {
           final h = launched(fa, 'attach');

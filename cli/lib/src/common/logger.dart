@@ -19,10 +19,12 @@ class Logger {
     HostEnvironment? env,
   }) : _level = level,
        _clock = clock ?? DateTime.now,
-       _stderr = stderrSink ?? stderr,
-       _env = env ?? HostEnvironment.system() {
+       _stderr = stderrSink ?? stderr {
     if (logFilePath != null && logFilePath.isNotEmpty) {
-      final problem = _openLogFile(logFilePath);
+      final problem = _openLogFile(
+        logFilePath,
+        env ?? HostEnvironment.system(),
+      );
       if (problem != null) {
         _stderr?.writeln(
           _format(
@@ -34,28 +36,19 @@ class Logger {
     }
   }
 
-  Logger._base(this._level)
-    : _clock = DateTime.now,
-      _env = HostEnvironment.system();
+  Logger._base(this._level) : _clock = DateTime.now;
 
   factory Logger.silent() = _SilentLogger;
 
-  /// Collects formatted lines into [sink]; for tests.
-  factory Logger.capturing(
-    List<String> sink, {
-    LogLevel level = LogLevel.trace,
-  }) => _CapturingLogger(sink, level: level);
-
   final LogLevel _level;
   final DateTime Function() _clock;
-  final HostEnvironment _env;
   IOSink? _stderr;
   IOSink? _file;
 
   LogLevel get level => _level;
 
   /// Opens [path] for appending, owner-only. Returns a reason when refused.
-  String? _openLogFile(String path) {
+  String? _openLogFile(String path, HostEnvironment env) {
     if (!path.toLowerCase().endsWith('.log')) {
       return 'its name must end in .log.';
     }
@@ -70,7 +63,7 @@ class Logger {
         return 'it is not a regular file.';
       }
       if (type == FileSystemEntityType.notFound) file.createSync();
-      if (!_env.isWindows) {
+      if (!env.isWindows) {
         final r = Process.runSync('/bin/chmod', ['600', path]);
         if (r.exitCode != 0) {
           return 'it could not be restricted to your user.';
@@ -156,19 +149,18 @@ class Logger {
   }
 
   /// Escapes control characters so a line can never start a new line.
-  static String _escape(String m) =>
-      m.replaceAllMapped(RegExp(r'[\x00-\x1f\x7f]'), (match) {
-        final c = match[0]!.codeUnitAt(0);
-        switch (c) {
-          case 0x0a:
-            return r'\n';
-          case 0x0d:
-            return r'\r';
-          case 0x09:
-            return r'\t';
-        }
-        return '\\x${c.toRadixString(16).padLeft(2, '0')}';
-      });
+  static String _escape(String m) => m.replaceAllMapped(_controlChars, (match) {
+    final c = match[0]!.codeUnitAt(0);
+    switch (c) {
+      case 0x0a:
+        return r'\n';
+      case 0x0d:
+        return r'\r';
+      case 0x09:
+        return r'\t';
+    }
+    return '\\x${c.toRadixString(16).padLeft(2, '0')}';
+  });
 
   static String _dapText(Object? message) {
     try {
@@ -195,6 +187,8 @@ class Logger {
   }
 }
 
+final RegExp _controlChars = RegExp(r'[\x00-\x1f\x7f]');
+
 class _SilentLogger extends Logger {
   _SilentLogger() : super._base(LogLevel.error);
 
@@ -203,24 +197,4 @@ class _SilentLogger extends Logger {
 
   @override
   void dap(String direction, Object? message) {}
-}
-
-class _CapturingLogger extends Logger {
-  _CapturingLogger(this.sink, {LogLevel level = LogLevel.trace})
-    : super._base(level);
-
-  final List<String> sink;
-
-  @override
-  void _log(LogLevel at, String message) {
-    if (at.index <= level.index) sink.add(_format(at, message));
-  }
-
-  @override
-  void dap(String direction, Object? message) {
-    final text = Logger._dapText(message);
-    if (level.index >= LogLevel.trace.index) {
-      sink.add(_format(LogLevel.trace, '$direction $text'));
-    }
-  }
 }

@@ -80,6 +80,7 @@ class HotActions {
   bool _clientRestart = false;
   Completer<void>? _clientRestartDone;
 
+  /// True while a hot action or a client `restart` is in flight.
   bool get busy => _current != null || _clientRestart;
 
   Future<HotResult> reload({String reason = 'manual'}) =>

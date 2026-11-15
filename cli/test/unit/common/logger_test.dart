@@ -118,19 +118,7 @@ void main() {
     expect(sink.buffer.toString().trimRight().split('\n').length, 1);
   });
 
-  test('capturing and silent loggers', () {
-    final lines = <String>[];
-    Logger.capturing(lines, level: LogLevel.debug)
-      ..debug('a')
-      ..trace('b')
-      ..dap('SYN', 'x');
-    expect(lines.length, 1);
-    expect(lines.single, endsWith('DEBUG a'));
-    final all = <String>[];
-    Logger.capturing(all)
-      ..trace('b')
-      ..dap('INJ', {'k': 1});
-    expect(all.length, 2);
+  test('the silent logger ignores everything', () {
     Logger.silent()
       ..error('x')
       ..info('y')

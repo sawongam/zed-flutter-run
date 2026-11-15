@@ -93,9 +93,12 @@ String failureMessage(String subcommand, int exitCode, String stderr) {
       '$exitCode.$tail Run it yourself to see the full output.';
 }
 
-/// Nearest project root of [project] (or the current directory), or null.
-String? findProjectRootFor(String? project, HostEnvironment env) =>
-    findProjectRoot(project ?? env.currentDirectory, env);
+/// Canonical root of the project that contains [project] (default: the
+/// current directory), or null when there is none.
+String? findProjectRootFor(String? project, HostEnvironment env) {
+  final root = findProjectRoot(project ?? env.currentDirectory, env);
+  return root == null ? null : canonicalDirectory(root, env);
+}
 
 /// Throws [ProjectNotFoundException] when there is no project.
 String requireProjectRoot(String? project, HostEnvironment env) {
@@ -107,5 +110,5 @@ String requireProjectRoot(String? project, HostEnvironment env) {
           'Run the command inside a Flutter project, or pass --project <dir>.',
     );
   }
-  return canonicalDirectory(root, env);
+  return root;
 }

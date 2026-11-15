@@ -6,9 +6,16 @@ import '../common/files.dart';
 import '../common/host_environment.dart';
 import '../common/json_types.dart';
 import '../common/logger.dart';
+import '../common/paths.dart';
 import 'control_client.dart';
 import 'session_info.dart';
-import 'session_paths.dart';
+
+/// `<stateBaseDirectory>/sessions`.
+String sessionsDirectory(HostEnvironment env) =>
+    env.pathContext.join(stateBaseDirectory(env), 'sessions');
+
+/// `<pid>.json`.
+String sessionFileName(int pid) => '$pid.json';
 
 /// Owner-side handle on a session file.
 class SessionHandle {

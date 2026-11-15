@@ -4,8 +4,6 @@ import 'launch_rewriter.dart';
 class ProxyState {
   const ProxyState({
     required this.request,
-    required this.kind,
-    required this.cwd,
     this.deviceId,
     this.mode,
     this.appId,
@@ -16,8 +14,6 @@ class ProxyState {
 
   /// `launch` until the client's `launch`/`attach` request is seen.
   final String request;
-  final DapKind kind;
-  final String cwd;
   final String? deviceId;
   final String? mode;
   final String? appId;
@@ -36,8 +32,6 @@ class ProxyState {
   }) {
     return ProxyState(
       request: request ?? this.request,
-      kind: kind,
-      cwd: cwd,
       deviceId: deviceId ?? this.deviceId,
       mode: mode ?? this.mode,
       appId: appId ?? this.appId,

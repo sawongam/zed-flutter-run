@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_run/src/control/session_info.dart';
-import 'package:flutter_run/src/control/session_paths.dart';
+import 'package:flutter_run/src/control/session_store.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';

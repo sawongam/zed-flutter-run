@@ -11,7 +11,7 @@ import 'proxy_support.dart';
 void main() {
   group('robustness (code review)', () {
     test(
-      'C1: a client whose flush never completes still shuts down and cleans up',
+      'a client whose flush never completes still shuts down and cleans up',
       () {
         fakeAsync((fa) {
           final h = Harness();
@@ -28,7 +28,7 @@ void main() {
       },
     );
 
-    test('C1: a held terminate response is released although flush hangs', () {
+    test('a held terminate response is released although flush hangs', () {
       fakeAsync((fa) {
         final h = Harness();
         h.client.hangFlush = true;
@@ -50,10 +50,7 @@ void main() {
       FakeChannel client,
       FakeAdapter adapter, {
       String? Function()? saved,
-      ProxyOptions options = const ProxyOptions(
-        kind: DapKind.flutter,
-        cwd: '/p',
-      ),
+      ProxyOptions options = const ProxyOptions(kind: DapKind.flutter),
       Future<void> Function()? started,
       Future<void> Function()? cleanup,
     }) => DapProxy(
@@ -70,41 +67,34 @@ void main() {
       onShutdownCleanup: cleanup,
     );
 
-    test(
-      'C2: a throwing savedDevice answers launch with an error response',
-      () {
-        fakeAsync((fa) {
-          final client = FakeChannel();
-          final adapter = FakeAdapter();
-          build(
-            client,
-            adapter,
-            saved: () => throw const FormatException('corrupt device file'),
-          ).run();
-          client.incoming.add({
-            'seq': 4,
-            'type': 'request',
-            'command': 'launch',
-          });
-          fa.flushMicrotasks();
-          final response = client.sentWhere('response', 'launch').single;
-          expect(response['success'], isFalse);
-          expect(response['request_seq'], 4);
-          expect(response['message'], contains('corrupt device file'));
-          expect(client.outputs.single, contains('Error: '));
-          expect(adapter.received, isEmpty);
-          client.incoming.add({
-            'seq': 5,
-            'type': 'request',
-            'command': 'threads',
-          });
-          fa.flushMicrotasks();
-          expect(adapter.received.single['seq'], 5);
+    test('a throwing savedDevice answers launch with an error response', () {
+      fakeAsync((fa) {
+        final client = FakeChannel();
+        final adapter = FakeAdapter();
+        build(
+          client,
+          adapter,
+          saved: () => throw const FormatException('corrupt device file'),
+        ).run();
+        client.incoming.add({'seq': 4, 'type': 'request', 'command': 'launch'});
+        fa.flushMicrotasks();
+        final response = client.sentWhere('response', 'launch').single;
+        expect(response['success'], isFalse);
+        expect(response['request_seq'], 4);
+        expect(response['message'], contains('corrupt device file'));
+        expect(client.outputs.single, contains('Error: '));
+        expect(adapter.received, isEmpty);
+        client.incoming.add({
+          'seq': 5,
+          'type': 'request',
+          'command': 'threads',
         });
-      },
-    );
+        fa.flushMicrotasks();
+        expect(adapter.received.single['seq'], 5);
+      });
+    });
 
-    test('C2: throwing hooks do not stop terminate', () {
+    test('throwing hooks do not stop terminate', () {
       fakeAsync((fa) {
         final client = FakeChannel();
         final adapter = FakeAdapter();
@@ -131,7 +121,7 @@ void main() {
       });
     });
 
-    test('C5: terminate is not forwarded after its own deadline fired', () {
+    test('terminate is not forwarded after its own deadline fired', () {
       fakeAsync((fa) {
         final client = FakeChannel();
         final adapter = FakeAdapter();
@@ -140,7 +130,6 @@ void main() {
           adapter,
           options: const ProxyOptions(
             kind: DapKind.flutter,
-            cwd: '/p',
             terminateTimeout: Duration(seconds: 1),
           ),
           started: () => Completer<void>().future,
@@ -157,7 +146,7 @@ void main() {
     });
 
     test(
-      'C6: a pending terminate does not block a later shutdown after a crash',
+      'a pending terminate does not block a later shutdown after a crash',
       () {
         fakeAsync((fa) {
           final h = Harness();
@@ -174,7 +163,7 @@ void main() {
       },
     );
 
-    test('C7: a failing adapter exitCode future does not escape', () {
+    test('a failing adapter exitCode future does not escape', () {
       fakeAsync((fa) {
         final h = Harness();
         h.adapter.exit.completeError(StateError('no exit code'));
@@ -183,7 +172,7 @@ void main() {
       });
     });
 
-    test('C13: hot actions give inject a bounded timeout', () {
+    test('hot actions give inject a bounded timeout', () {
       fakeAsync((fa) {
         final h = Harness();
         h.adapter.event('flutter.appStarted');
@@ -201,7 +190,7 @@ void main() {
 
   group('process cleanup (phase 6)', () {
     test(
-      'R2: after a crash only the last two polls are swept, flagged crashed',
+      'after a crash only the last two polls are swept, flagged crashed',
       () {
         fakeAsync((fa) {
           final h = Harness();
@@ -221,7 +210,7 @@ void main() {
       },
     );
 
-    test('R9: hot actions are refused once shutdown starts', () {
+    test('hot actions are refused once shutdown starts', () {
       fakeAsync((fa) {
         final h = Harness();
         h.adapter.event('flutter.appStarted');
@@ -235,28 +224,24 @@ void main() {
       });
     });
 
-    test(
-      'R13: no crash report when the program ended and the adapter exited 0',
-      () {
-        fakeAsync((fa) {
-          final h = Harness();
-          h.adapter.event('terminated');
-          fa.flushMicrotasks();
-          h.adapter.die(0);
-          fa.elapse(const Duration(seconds: 3));
-          expect(h.exitCode, 0);
-          expect(h.client.outputs, isEmpty);
-          expect(h.client.sentWhere('event', 'terminated'), hasLength(1));
-        });
-      },
-    );
+    test('no crash report when the program ended and the adapter exited 0', () {
+      fakeAsync((fa) {
+        final h = Harness();
+        h.adapter.event('terminated');
+        fa.flushMicrotasks();
+        h.adapter.die(0);
+        fa.elapse(const Duration(seconds: 3));
+        expect(h.exitCode, 0);
+        expect(h.client.outputs, isEmpty);
+        expect(h.client.sentWhere('event', 'terminated'), hasLength(1));
+      });
+    });
 
-    test('R15: a response without request_seq does not answer initialize', () {
+    test('a response without request_seq does not answer initialize', () {
       fakeAsync((fa) {
         final h = Harness(
           options: const ProxyOptions(
             kind: DapKind.flutter,
-            cwd: '/proj',
             initializeTimeout: Duration(seconds: 5),
           ),
         );
@@ -268,7 +253,7 @@ void main() {
       });
     });
 
-    test('R14: EOF waits for earlier queued messages', () {
+    test('EOF waits for earlier queued messages', () {
       fakeAsync((fa) {
         final h = Harness();
         h.request(1, 'launch', {});
@@ -294,7 +279,7 @@ void main() {
       });
     });
 
-    test('R11: finished injected requests are not retained', () {
+    test('finished injected requests are not retained', () {
       fakeAsync((fa) {
         final h = Harness();
         for (var i = 0; i < 50; i++) {
@@ -321,14 +306,14 @@ void main() {
       });
     });
 
-    test('S5: an unsafe device id is not injected and a warning is shown', () {
+    test('an unsafe device id is not injected and a warning is shown', () {
       fakeAsync((fa) {
         final client = FakeChannel();
         final adapter = FakeAdapter();
         DapProxy(
           client: client,
           adapter: adapter,
-          options: const ProxyOptions(kind: DapKind.flutter, cwd: '/p'),
+          options: const ProxyOptions(kind: DapKind.flutter),
           rewriter: LaunchRewriter(
             kind: DapKind.flutter,
             cwd: '/p',

@@ -48,7 +48,7 @@ enum StopFlow { idle, requested, finishing, finished }
 /// (their answers are held back until the cleanup is done), a shutdown after
 /// EOF or a signal, the descendant snapshots taken beforehand and the sweep
 /// that kills what survived. Zed's real stop path is `terminate`, then
-/// `disconnect`, then EOF (ADR 0006 D2).
+/// `disconnect`, then EOF.
 class ShutdownCoordinator {
   ShutdownCoordinator({
     required this.host,
@@ -110,12 +110,6 @@ class ShutdownCoordinator {
   Timer? _snapshotTimer;
   Timer? _firstSnapshotTimer;
 
-  // ----------------------------------------------------------------- facts
-
-  bool get adapterExited => _adapterExited;
-
-  bool get crashed => _crashed;
-
   bool get terminatedSeen => _terminatedSeen.isCompleted;
 
   StopFlow get terminateFlow => _terminate;
@@ -153,8 +147,6 @@ class ShutdownCoordinator {
     phase.beginStopping();
   }
 
-  // ------------------------------------------------------------- snapshots
-
   /// Begins recording the adapter's descendants while it runs, so a killed
   /// adapter's reparented children can still be swept (also on Windows,
   /// where `taskkill /T` alone needs a live parent).
@@ -181,8 +173,6 @@ class ShutdownCoordinator {
           .whenComplete(() => _snapshotRunning = false),
     );
   }
-
-  // ------------------------------------------------------------- terminate
 
   Future<void> handleTerminate(DapMessage message) async {
     // The final teardown already began: nothing to stop any more, and a new
@@ -248,8 +238,6 @@ class ShutdownCoordinator {
     }
   }
 
-  // ------------------------------------------------------------ disconnect
-
   Future<void> handleDisconnect(DapMessage message) async {
     if (disconnectRequested) {
       host.sendToAdapter(message.raw);
@@ -303,8 +291,6 @@ class ShutdownCoordinator {
     seq: host.nextSyntheticSeq(),
   );
 
-  // -------------------------------------------------- adapter answers/exit
-
   /// Handles an adapter response to the client's `terminate` or `disconnect`.
   /// Returns true when it was held back (the caller must not forward it).
   bool holdResponse(DapMessage response) {
@@ -339,8 +325,6 @@ class ShutdownCoordinator {
       await host.finish(0);
     }
   }
-
-  // -------------------------------------------------------------- shutdown
 
   /// Orderly shutdown (same cleanup as a stdin EOF). Idempotent.
   Future<void> shutdown(String reason, {required Future<int> done}) =>
@@ -384,8 +368,6 @@ class ShutdownCoordinator {
       _log.debug('Injected $command ended without a response: $e');
     }
   }
-
-  // --------------------------------------------------------- cleanup, sweep
 
   /// Step 1 and 2 of every stop: tell the owner (session file) and snapshot
   /// the adapter's descendants before anything is signalled.
@@ -462,8 +444,6 @@ class ShutdownCoordinator {
       _log.warn('Sweeping adapter processes failed: $e');
     }
   }
-
-  // ----------------------------------------------------------------- finish
 
   /// Called when the final teardown begins: stops every timer and releases
   /// anyone waiting for the terminate.

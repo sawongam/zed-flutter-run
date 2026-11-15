@@ -12,8 +12,7 @@ import 'version.dart';
 String canonicalDirectory(String path, HostEnvironment env) {
   final ctx = env.pathContext;
   var result = ctx.normalize(ctx.absolute(path));
-  final isHost = env.os == HostEnvironment.system().os;
-  if (isHost) {
+  if (env.os == HostOs.current) {
     try {
       if (Directory(result).existsSync()) {
         result = ctx.normalize(Directory(result).resolveSymbolicLinksSync());

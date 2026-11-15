@@ -50,27 +50,8 @@ HostEnvironment posix() => HostEnvironment(
 
 void main() {
   sharedDaemonTests();
-  group('parsePsOutput', () {
-    test('golden', () {
-      final map = parsePsOutput(_psGolden);
-      expect(map, {
-        0: [1],
-        1: [100, 200],
-        100: [101, 102],
-        102: [103],
-      });
-    });
-    test('plain "pid ppid" lines, CRLF and blanks', () {
-      expect(parsePsOutput('1 0\r\n\r\n 5 1 \r\n'), {
-        0: [1],
-        1: [5],
-      });
-    });
-    test('empty', () => expect(parsePsOutput(''), isEmpty));
-  });
-
   group('collectDescendants', () {
-    final map = parsePsOutput(_psGolden);
+    final map = parseProcessTable(_psGolden).childrenOf;
     test('golden', () {
       expect(collectDescendants(map, 100), {101, 102, 103});
       expect(collectDescendants(map, 1), {100, 101, 102, 103, 200});
@@ -449,7 +430,7 @@ void main() {
 }
 
 void sharedDaemonTests() {
-  group('shared daemons (ADR 0007 P1)', () {
+  group('shared daemons', () {
     test('adb, Gradle, Kotlin and the Dart tooling daemon are recognised', () {
       for (final c in [
         '/home/u/Android/Sdk/platform-tools/adb -L tcp:5037 fork-server server',

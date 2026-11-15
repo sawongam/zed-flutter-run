@@ -393,7 +393,6 @@ void main() {
         fail('should throw');
       } on SdkNotFoundException catch (e) {
         expect(e.exitCode, ExitCodes.sdkNotFound);
-        expect(e.tried, hasLength(r.trace.length));
         for (final step in r.trace) {
           expect(e.message, contains(step.description));
         }

@@ -9,7 +9,7 @@ import '../common/logger.dart';
 import '../common/version.dart';
 import '../control/control_client.dart';
 import '../control/control_protocol.dart';
-import '../control/find_sessions.dart';
+import '../control/session_matcher.dart';
 import '../control/session_store.dart';
 import '../dap/channel.dart';
 import '../dap/hot_actions.dart';

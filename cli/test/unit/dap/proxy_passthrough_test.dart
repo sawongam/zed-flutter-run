@@ -370,7 +370,6 @@ void main() {
         final h = Harness(
           options: const ProxyOptions(
             kind: DapKind.flutter,
-            cwd: '/proj',
             initializeTimeout: Duration(seconds: 3),
             initializeNoticeAfter: Duration(seconds: 1),
             timings: ProxyTimings(drainWait: Duration(milliseconds: 10)),

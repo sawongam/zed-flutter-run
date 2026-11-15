@@ -9,8 +9,6 @@ executables:
   flutter_run:
 dependencies:
   args: ^2.7.0
-  async: ^2.13.1
-  collection: ^1.19.1
   crypto: ^3.0.8
   glob: ^2.2.0
   meta: ^1.19.0

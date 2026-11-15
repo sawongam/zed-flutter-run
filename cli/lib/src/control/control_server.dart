@@ -26,7 +26,7 @@ bool constantTimeEquals(String a, String b) {
 
 /// Loopback-only control server: one JSON request line per connection, a
 /// token on every request, a fixed command set.
-class ControlServer {
+class ControlServer implements ControlEndpoint {
   ControlServer._(
     this._server,
     this._control,
@@ -78,13 +78,16 @@ class ControlServer {
   bool _closed = false;
 
   /// Base64url (no padding) of 32 random bytes.
+  @override
   final String token;
 
+  @override
   int get port => _server.port;
 
   /// Connections currently open (for tests and diagnostics).
   int get connectionCount => _connections.length;
 
+  @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
@@ -120,13 +123,12 @@ class ControlServer {
   Future<void> _rejectBusy(Socket socket) async {
     try {
       socket.add(
-        utf8.encode(
-          '${jsonEncode({
-            'v': controlProtocolVersion,
-            'id': null,
-            'ok': false,
-            'error': {'code': ControlErrorCode.busy.wire, 'message': 'The session has too many open connections.'},
-          })}\n',
+        _encodeReply(
+          null,
+          error: const ControlException(
+            ControlErrorCode.busy,
+            'The session has too many open connections.',
+          ),
         ),
       );
       await socket.flush().timeout(const Duration(seconds: 1));
@@ -167,6 +169,22 @@ class ControlServer {
       'Unknown command "$command".',
     );
   }
+}
+
+/// One reply line: the result, or the error when [error] is set.
+List<int> _encodeReply(Object? id, {Json? result, ControlException? error}) {
+  final body = <String, Object?>{
+    'v': controlProtocolVersion,
+    'id': id,
+    if (error == null) ...{
+      'ok': true,
+      'result': result ?? <String, Object?>{},
+    } else ...{
+      'ok': false,
+      'error': {'code': error.code.wire, 'message': error.message},
+    },
+  };
+  return utf8.encode('${jsonEncode(body)}\n');
 }
 
 class _Connection {
@@ -265,13 +283,13 @@ class _Connection {
         );
       }
       final rawId = decoded['id'];
-      if (rawId == null || rawId is int || rawId is String) id = rawId;
       if (rawId != null && rawId is! int && rawId is! String) {
         throw const ControlException(
           ControlErrorCode.badRequest,
           '"id" must be a number or a string.',
         );
       }
+      id = rawId;
       final version = decoded['v'];
       if (version is! int) {
         throw const ControlException(
@@ -334,19 +352,8 @@ class _Connection {
   }) async {
     if (_responded || _destroyed) return;
     _responded = true;
-    final body = <String, Object?>{
-      'v': controlProtocolVersion,
-      'id': id,
-      if (error == null) ...{
-        'ok': true,
-        'result': result ?? <String, Object?>{},
-      } else ...{
-        'ok': false,
-        'error': {'code': error.code.wire, 'message': error.message},
-      },
-    };
     try {
-      _socket.add(utf8.encode('${jsonEncode(body)}\n'));
+      _socket.add(_encodeReply(id, result: result, error: error));
       await _socket.flush();
       // Half-close and keep draining, so a client that is still sending does
       // not get a reset that would discard our answer.

@@ -4,20 +4,19 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
-/// Remembers the SHA-256 of each file's last seen content. There is no
-/// baseline scan (ADR 0006): the first event for a file counts as a change.
+/// Remembers the SHA-256 of each file's last seen content. Memory is bounded:
+/// the least recently used entries are dropped beyond [maxEntries].
 class ContentHashTracker {
   ContentHashTracker({
     Future<List<int>?> Function(String path)? readFile,
     int maxBytes = 2 * 1024 * 1024,
-    int maxEntries = 5000,
-  }) : _maxBytes = maxBytes,
-       _maxEntries = maxEntries {
+    this.maxEntries = 5000,
+  }) : _maxBytes = maxBytes {
     _readFile = readFile ?? _readLimited;
   }
 
   final int _maxBytes;
-  final int _maxEntries;
+  final int maxEntries;
   late final Future<List<int>?> Function(String path) _readFile;
   final Map<String, String> _hashes = {};
 
@@ -71,7 +70,7 @@ class ContentHashTracker {
   void _store(String key, String value) {
     _hashes.remove(key); // keep insertion order = recency
     _hashes[key] = value;
-    while (_hashes.length > _maxEntries) {
+    while (_hashes.length > maxEntries) {
       _hashes.remove(_hashes.keys.first);
     }
   }

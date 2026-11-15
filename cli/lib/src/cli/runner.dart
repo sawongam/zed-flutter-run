@@ -22,7 +22,7 @@ bool verboseRequested(Iterable<String> args) {
 }
 
 /// The `flutter_run` command line: registers every command and maps failures
-/// to exit codes (plan §4.1).
+/// to exit codes.
 class FlutterRunRunner extends CommandRunner<int> {
   FlutterRunRunner({Wiring? wiring, Future<void> Function()? flushOutput})
     : this._(wiring ?? Wiring.system(), flushOutput);
@@ -119,7 +119,7 @@ Exit codes:
     return super.runCommand(topLevelResults);
   }
 
-  /// Runs [args] with the top-level error handling of plan §4.1.
+  /// Runs [args], mapping every failure to an exit code.
   Future<int> execute(Iterable<String> args, {bool verbose = false}) async {
     final console = wiring.console;
     try {

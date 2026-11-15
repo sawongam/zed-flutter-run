@@ -10,8 +10,6 @@ class StderrTail {
     if (_lines.length > maxLines) _lines.removeAt(0);
   }
 
-  bool get isEmpty => _lines.isEmpty;
-
   /// The most recent line, or null.
   String? get last => _lines.isEmpty ? null : _lines.last;
 

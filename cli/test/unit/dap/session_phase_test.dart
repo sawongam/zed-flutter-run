@@ -9,7 +9,6 @@ void main() {
       expect(m.transition(SessionPhase.running), isTrue);
       m.beginStopping();
       expect(m.phase, SessionPhase.stopping);
-      expect(m.isStopping, isTrue);
       expect(m.isFinishing, isFalse);
       expect(m.transition(SessionPhase.finishing), isTrue);
       expect(m.isFinishing, isTrue);
@@ -22,7 +21,7 @@ void main() {
       final m = SessionPhaseMachine(strict: true)
         ..transition(SessionPhase.running);
       expect(m.transition(SessionPhase.finishing), isTrue);
-      expect(m.isStopping, isTrue, reason: 'finishing counts as past stopping');
+      expect(m.isFinishing, isTrue);
     });
 
     test('the legal table is forward-only', () {

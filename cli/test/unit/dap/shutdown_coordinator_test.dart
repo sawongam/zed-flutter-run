@@ -76,7 +76,7 @@ DapMessage response(int requestSeq, String command) => DapMessage({
 class Rig {
   Rig(
     FakeAsync fa, {
-    this.options = const ProxyOptions(kind: DapKind.flutter, cwd: '/p'),
+    this.options = const ProxyOptions(kind: DapKind.flutter),
     Future<void> Function()? onStarted,
     Future<void> Function()? onCleanup,
   }) {
@@ -420,7 +420,6 @@ void main() {
           fa,
           options: const ProxyOptions(
             kind: DapKind.flutter,
-            cwd: '/p',
             timings: ProxyTimings(stoppingNoticeAfter: Duration(seconds: 10)),
           ),
         );

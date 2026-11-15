@@ -1,11 +1,10 @@
 import 'dart:async';
 
 import '../common/clock.dart';
-import 'dap_text.dart';
 
-/// Guards the start-up: the adapter must answer `initialize` in time. After a
-/// while one notice says Flutter is still starting; after the limit the
-/// session fails with a clear message (ADR 0007 P2).
+/// The adapter must answer `initialize` in time. After a while one notice says
+/// Flutter is still starting; after the limit the session fails with a clear
+/// message.
 class InitializeWatchdog {
   InitializeWatchdog({
     required Clock clock,
@@ -52,7 +51,7 @@ class InitializeWatchdog {
       if (_answered || _isEnded()) return;
       _onTimeout(
         'The Flutter debug adapter did not answer within '
-        '${describeDuration(timeout)}.',
+        '${_describe(timeout)}.',
       );
     });
   }
@@ -79,3 +78,7 @@ class InitializeWatchdog {
     _noticeTimer = null;
   }
 }
+
+String _describe(Duration d) => d.inSeconds >= 1
+    ? '${d.inSeconds} seconds'
+    : '${d.inMilliseconds} milliseconds';

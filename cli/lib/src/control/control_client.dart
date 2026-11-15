@@ -176,16 +176,16 @@ class ControlClient {
       );
     }
     final error = decoded['error'];
-    final code = error is Map<String, Object?>
-        ? ControlErrorCode.fromWire(error['code'] as String?)
-        : null;
-    final message = error is Map<String, Object?>
-        ? error['message'] as String?
-        : null;
+    final code = error is Map<String, Object?> ? error['code'] : null;
+    final message = error is Map<String, Object?> ? error['message'] : null;
     return ControlResponse(
       ok: false,
-      errorCode: code ?? ControlErrorCode.internal,
-      errorMessage: message ?? 'The session reported an error.',
+      errorCode:
+          ControlErrorCode.fromWire(code is String ? code : null) ??
+          ControlErrorCode.internal,
+      errorMessage: message is String
+          ? message
+          : 'The session reported an error.',
     );
   }
 

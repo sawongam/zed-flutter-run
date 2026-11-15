@@ -11,8 +11,6 @@ import 'process_tree.dart';
 /// A child process we started and may have to clean up with its descendants.
 class ManagedProcess {
   ManagedProcess._(this._process, this._host, this._logger, this._spec) {
-    _exited = false;
-    // Only records the exit; nothing awaits it.
     unawaited(
       _process.exitCode.then((_) => _exited = true, onError: (Object _) {}),
     );
@@ -22,7 +20,7 @@ class ManagedProcess {
   final HostEnvironment _host;
   final Logger _logger;
   final ProcessSpec _spec;
-  late bool _exited;
+  bool _exited = false;
   final Map<int, String> _startTimes = <int, String>{};
 
   /// Starts [spec] directly (never through a shell). [environment] is added to
@@ -64,13 +62,18 @@ class ManagedProcess {
   Future<Set<int>> snapshotDescendants() async {
     final table = await readProcessTable(_host);
     if (table.byPid.isEmpty) return <int>{pid}; // table unreadable
+    return _recordStartTimes(table);
+  }
+
+  /// Remembers the start time of this process and its descendants, so a pid
+  /// reused later by an unrelated process is not killed. Returns the
+  /// descendants.
+  Set<int> _recordStartTimes(ProcessTable table) {
     final descendants = collectDescendants(table.childrenOf, pid);
-    for (final d in descendants) {
+    for (final d in [...descendants, pid]) {
       final start = table.byPid[d]?.startTime;
       if (start != null) _startTimes[d] = start;
     }
-    final rootStart = table.byPid[pid]?.startTime;
-    if (rootStart != null) _startTimes[pid] = rootStart;
     // Forget processes that no longer exist so the map stays bounded.
     _startTimes.removeWhere((pid, _) => !table.byPid.containsKey(pid));
     return descendants;
@@ -85,13 +88,6 @@ class ManagedProcess {
     Duration grace = const Duration(seconds: 2),
     bool crashed = false,
   }) async {
-    if (!_exited) {
-      try {
-        await snapshotDescendants();
-      } on Object catch (e) {
-        _logger.debug('Could not snapshot the process tree: $e');
-      }
-    }
     var all = <int>{...extraPids};
     if (crashed && all.isNotEmpty) {
       final commands = await readCommandLines(all, _host);
@@ -105,7 +101,24 @@ class ManagedProcess {
     _logger.debug(
       'Terminating process tree of pid $pid (${all.length} others).',
     );
-    await killTree(root, all, _host, grace: grace, startTimes: _startTimes);
+    // killTree reads the table anyway; record the start times from its first
+    // read instead of running a separate snapshot first.
+    var recorded = _exited;
+    Future<ProcessTable> readTable() async {
+      final table = await readProcessTable(_host);
+      if (!recorded && table.byPid.isNotEmpty) _recordStartTimes(table);
+      recorded = true;
+      return table;
+    }
+
+    await killTree(
+      root,
+      all,
+      _host,
+      grace: grace,
+      startTimes: _startTimes,
+      readTable: readTable,
+    );
     if (!_exited) {
       try {
         await _process.exitCode.timeout(const Duration(seconds: 2));

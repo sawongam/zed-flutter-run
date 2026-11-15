@@ -7,10 +7,10 @@ description = "Flutter Run & Debug: hot reload, reload on save, device picker an
 repository = "https://github.com/sawongam/zed-flutter-run"
 
 [debug_adapters.FlutterRun]
-# schema: debug_adapter_schemas/FlutterRun.json (default path)
+# The schema is read from debug_adapter_schemas/FlutterRun.json.
 
 # Turns tasks such as `flutter run -d linux` or `dart run bin/main.dart` into FlutterRun scenarios.
-# Only used when the language's debuggers list starts with FlutterRun (see docs/decisions/0009).
+# Zed only consults it when FlutterRun is the first entry of the language's debuggers list.
 [debug_locators.FlutterRun]
 
 [[capabilities]]

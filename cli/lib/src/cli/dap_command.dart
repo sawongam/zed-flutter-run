@@ -32,7 +32,9 @@ Future<void> answerStartupFailure(
 }) async {
   DapJson? first;
   try {
-    first = await client.messages.firstWhere(isRequest).timeout(wait);
+    first = await client.messages
+        .firstWhere((m) => DapMessage(m).isRequest)
+        .timeout(wait);
   } on TimeoutException {
     // The client sent nothing; still write the console text.
   } on StateError {
@@ -132,9 +134,6 @@ class DapCommand extends Command<int> {
       'Debug adapter proxy (started by the Zed extension, not by hand).';
 
   @override
-  bool get hidden => false;
-
-  @override
   Future<int> run() {
     final cwdOption = argResults!['cwd'] as String?;
     if (cwdOption == null || cwdOption.isEmpty) {
@@ -194,24 +193,12 @@ class DapCommand extends Command<int> {
 
     final ManagedProcess process;
     try {
-      final resolution = await _wiring.sdkResolver.resolveOrThrow(
-        projectDir: cwd,
-        kind: kind == DapKind.dart ? SdkKind.dart : SdkKind.flutter,
-        explicitSdkPath: options.flutterSdk,
-        strictFvm: useFvm,
-      );
-      final executable = kind == DapKind.dart
-          ? resolution.dartExecutable!
-          : resolution.flutter!.flutterExecutable;
-      // Attaching must not start a second DDS (it would outlive the session,
-      // see the attach probe). Only the Flutter adapter has the flag.
-      final args = <String>[
-        'debug_adapter',
-        if (kind == DapKind.flutter && request == 'attach') '--no-dds',
-      ];
-      final base = buildProcessSpec(executable, args, env);
-      process = await ManagedProcess.start(
-        ProcessSpec(base.executable, base.arguments, workingDirectory: cwd),
+      process = await _startAdapter(
+        kind: kind,
+        request: request,
+        cwd: cwd,
+        useFvm: useFvm,
+        flutterSdk: options.flutterSdk,
         logger: logger,
       );
     } on FlutterRunException catch (e) {
@@ -255,5 +242,37 @@ class DapCommand extends Command<int> {
     final code = await host.run();
     if (ownLogger) await logger.close();
     return code;
+  }
+
+  /// Resolves the SDK and starts `<flutter|dart> debug_adapter` in [cwd].
+  Future<ManagedProcess> _startAdapter({
+    required DapKind kind,
+    required String request,
+    required String cwd,
+    required bool useFvm,
+    required String? flutterSdk,
+    required Logger logger,
+  }) async {
+    final env = _wiring.env;
+    final resolution = await _wiring.sdkResolver.resolveOrThrow(
+      projectDir: cwd,
+      kind: kind == DapKind.dart ? SdkKind.dart : SdkKind.flutter,
+      explicitSdkPath: flutterSdk,
+      strictFvm: useFvm,
+    );
+    final executable = kind == DapKind.dart
+        ? resolution.dartExecutable!
+        : resolution.flutter!.flutterExecutable;
+    // Attaching must not start a second DDS (it would outlive the session).
+    // Only the Flutter adapter has the flag.
+    final args = <String>[
+      'debug_adapter',
+      if (kind == DapKind.flutter && request == 'attach') '--no-dds',
+    ];
+    final base = buildProcessSpec(executable, args, env);
+    return ManagedProcess.start(
+      ProcessSpec(base.executable, base.arguments, workingDirectory: cwd),
+      logger: logger,
+    );
   }
 }

@@ -9,7 +9,6 @@ import '../common/global_options.dart';
 import '../common/host_environment.dart';
 import '../common/paths.dart';
 import '../common/version.dart';
-import '../control/session_paths.dart';
 import '../control/session_store.dart';
 import '../init/project_detect.dart';
 import '../init/templates.dart';
@@ -63,7 +62,6 @@ class DoctorCommand extends Command<int> {
       ..out('Executable: $exe')
       ..out('');
 
-    // Project.
     ProjectInfo? project;
     try {
       project = detectProject(dir, _env);
@@ -75,14 +73,34 @@ class DoctorCommand extends Command<int> {
     }
     final projectDir = project?.root ?? dir;
 
-    // SDK.
-    final kind = project?.kind == ProjectKind.dart
-        ? SdkKind.dart
-        : SdkKind.flutter;
+    final sdkFound = await _printSdk(
+      projectDir,
+      project?.kind == ProjectKind.dart ? SdkKind.dart : SdkKind.flutter,
+      options.flutterSdk,
+    );
+    _console.out('');
+    _printPathStatus(exe);
+    await _printSessions();
+    _console.out('');
+    _printZedFile(projectDir, 'debug.json', project, isDebug: true);
+    _printZedFile(projectDir, 'tasks.json', project, isDebug: false);
+    _console.out('');
+    _printOverrides();
+
+    return sdkFound ? ExitCodes.ok : ExitCodes.sdkNotFound;
+  }
+
+  /// Prints how the SDK was looked for and what was found. Returns whether
+  /// the SDK that [kind] needs was found.
+  Future<bool> _printSdk(
+    String projectDir,
+    SdkKind kind,
+    String? explicitSdkPath,
+  ) async {
     final resolution = await _sdk.resolve(
       projectDir: projectDir,
       kind: kind,
-      explicitSdkPath: options.flutterSdk,
+      explicitSdkPath: explicitSdkPath,
     );
     _console
       ..out('')
@@ -93,7 +111,7 @@ class DoctorCommand extends Command<int> {
       _console.out('  $line');
     }
     final flutter = resolution.flutter;
-    final resolved = kind == SdkKind.flutter
+    final found = kind == SdkKind.flutter
         ? flutter != null
         : resolution.dartExecutable != null;
     if (flutter != null) {
@@ -112,7 +130,7 @@ class DoctorCommand extends Command<int> {
       );
     }
     _console.out('Dart version: ${flutter?.dartVersion ?? 'unknown'}');
-    if (!resolved) {
+    if (!found) {
       _console
         ..out('')
         ..out(
@@ -121,41 +139,35 @@ class DoctorCommand extends Command<int> {
           'variable, or put flutter on your PATH.',
         );
     }
+    return found;
+  }
 
-    // PATH.
-    _console.out('');
+  void _printPathStatus(String exe) {
     final onPath = findExecutableOnPath(toolName, _env);
     if (onPath != null) {
       _console.out('flutter_run on PATH: yes ($onPath)');
+      return;
+    }
+    _console.out('flutter_run on PATH: no');
+    final ctx = _env.pathContext;
+    final base = ctx.basename(exe).toLowerCase();
+    if (base == 'dart' || base == 'dart.exe') {
+      _console.out(
+        'This is a run from source, so there is no installed command. '
+        'See the README section "Install".',
+      );
     } else {
-      _console.out('flutter_run on PATH: no');
-      final base = ctx.basename(exe).toLowerCase();
-      if (base == 'dart' || base == 'dart.exe') {
-        _console.out(
-          'This is a run from source, so there is no installed command. '
-          'See the README section "Install".',
-        );
-      } else {
-        for (final line in pathFixHint(_env.os, ctx.dirname(exe)).split('\n')) {
-          _console.out(line);
-        }
+      for (final line in pathFixHint(_env.os, ctx.dirname(exe)).split('\n')) {
+        _console.out(line);
       }
     }
+  }
 
-    // Sessions.
-    await _printSessions();
-
-    // Zed files.
-    _console.out('');
-    _printZedFile(projectDir, 'debug.json', project, isDebug: true);
-    _printZedFile(projectDir, 'tasks.json', project, isDebug: false);
-
-    // Overrides.
+  void _printOverrides() {
     final overrides = [
       for (final entry in _env.environment.entries)
         if (entry.key.startsWith(envPrefix)) '${entry.key}=${entry.value}',
     ]..sort();
-    _console.out('');
     if (overrides.isEmpty) {
       _console.out('Environment overrides: none');
     } else {
@@ -164,8 +176,6 @@ class DoctorCommand extends Command<int> {
         _console.out('  $line');
       }
     }
-
-    return resolved ? ExitCodes.ok : ExitCodes.sdkNotFound;
   }
 
   Future<void> _printSessions() async {

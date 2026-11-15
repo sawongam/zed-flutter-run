@@ -33,16 +33,6 @@ const JsonEncoder _encoder = JsonEncoder.withIndent('  ');
 /// 2-space indented JSON, LF, trailing newline.
 String encodeJsonFile(Object? value) => '${_encoder.convert(value)}\n';
 
-/// True when [text] parses as strict JSON (no comments, no trailing commas).
-bool isStrictJson(String text) {
-  try {
-    jsonDecode(text);
-    return true;
-  } on FormatException {
-    return false;
-  }
-}
-
 /// Merges [additions] into the JSON array in [existingText], keyed by
 /// `label`. Existing entries and their order are kept; only entries whose
 /// label is missing are appended. `null` means the file does not exist.

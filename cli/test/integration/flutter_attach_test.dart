@@ -16,7 +16,7 @@ import 'support/temp_project.dart';
 import 'support/wait.dart';
 
 /// `http://H:P/TOKEN=/` form of the VM service address from `app.debugPort`
-/// (the form the README tells users to copy; docs/research/attach-probe.md).
+/// (the form the README tells users to copy).
 String _httpForm(String wsUri) {
   final u = Uri.parse(wsUri);
   final path = u.path.endsWith('/ws')

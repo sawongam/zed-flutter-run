@@ -238,7 +238,7 @@ void main() {
     });
   });
 
-  test('R16: only the command word decides whether Ctrl+C is handled', () {
+  test('only the command word decides whether Ctrl+C is handled', () {
     expect(FlutterRunRunner.isDapCommand(['dap', '--cwd', '/x']), isTrue);
     expect(FlutterRunRunner.isDapCommand(['--verbose', 'dap']), isTrue);
     expect(

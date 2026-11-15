@@ -11,13 +11,12 @@ import 'proxy_state.dart';
 class SessionTracker {
   SessionTracker({
     required DapKind kind,
-    required String cwd,
     required void Function(String text, NoticeLevel level) onNotice,
     required void Function() onProcessActivity,
   }) : _kind = kind,
        _onNotice = onNotice,
        _onProcessActivity = onProcessActivity,
-       _state = ProxyState(request: DapCommands.launch, kind: kind, cwd: cwd);
+       _state = const ProxyState(request: DapCommands.launch);
 
   final DapKind _kind;
   final void Function(String text, NoticeLevel level) _onNotice;
