@@ -2,7 +2,7 @@ id = "flutter-run-debugger"
 name = "Flutter Run & Debug"
 version = "0.1.0"
 schema_version = 1
-authors = ["Flutter Run & Debug contributors"]
+authors = ["sawongam"]
 description = "Flutter Run & Debug: hot reload, reload on save, device picker and DevTools for Zed."
 repository = "https://github.com/sawongam/zed-flutter-run"
 
