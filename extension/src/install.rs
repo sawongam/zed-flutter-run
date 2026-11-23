@@ -8,7 +8,7 @@ use zed_extension_api::{Architecture as Arch, Os};
 pub const PROXY_VERSION: &str = "0.1.0";
 const REPO: &str = "sawongam/zed-flutter-run";
 /// Flipped by the release steps once `dart pub global activate flutter_run` works.
-const PUBLISHED_ON_PUB: bool = false;
+const PUBLISHED_ON_PUB: bool = true;
 
 /// Release asset name, e.g. `flutter_run-v0.1.0-linux-x64`.
 /// Windows on ARM uses the x64 binary (runs under emulation).
