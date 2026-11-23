@@ -8,8 +8,6 @@ Install it:
 dart pub global activate flutter_run
 ```
 
-(Until it is on pub.dev, run `dart pub global activate --source git https://github.com/sawongam/zed-flutter-run --git-path cli`.)
-
 Set up a Flutter project for Zed:
 
 ```sh
