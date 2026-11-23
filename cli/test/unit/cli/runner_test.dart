@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:args/command_runner.dart';
 import 'package:flutter_run/src/cli/runner.dart';
 import 'package:flutter_run/src/common/errors.dart';
@@ -17,7 +20,23 @@ class _ThrowingCommand extends Command<int> {
   String get description => 'throws';
 
   @override
-  Future<int> run() async => throw error;
+  Future<int> run() async =>
+      Error.throwWithStackTrace(error, StackTrace.current);
+}
+
+class _BlockingCommand extends Command<int> {
+  _BlockingCommand(this.gate);
+
+  final Future<int> gate;
+
+  @override
+  String get name => 'block';
+
+  @override
+  String get description => 'blocks';
+
+  @override
+  Future<int> run() => gate;
 }
 
 void main() {
@@ -30,6 +49,25 @@ void main() {
   });
 
   tearDown(() => t.dispose());
+
+  test(
+    'a non-dap command watches SIGINT through the injected source',
+    () async {
+      final signals = FakeSignalSource();
+      final w = TestWiring(signals: signals);
+      addTearDown(w.dispose);
+      final r = FlutterRunRunner(wiring: w.wiring, flushOutput: () async {});
+      final gate = Completer<int>();
+      r.addCommand(_BlockingCommand(gate.future));
+      final done = r.runWithExit(['block']);
+      await pumpEventQueue();
+      expect(signals.isWatched(ProcessSignal.sigint), isTrue);
+      signals.raise(ProcessSignal.sigint);
+      expect(await done, ExitCodes.interrupted);
+      expect(signals.isWatched(ProcessSignal.sigint), isFalse);
+      gate.complete(0);
+    },
+  );
 
   test('version prints the tool name and version', () async {
     expect(await runner.execute(['version']), 0);
@@ -87,9 +125,7 @@ void main() {
       SdkNotFoundException('x'): 6,
       DeviceException('x'): 7,
       ProjectNotFoundException('x'): 8,
-      ManualActionRequired('x'): 9,
       ExternalToolException('x'): 10,
-      RequestTimeoutException('x'): 5,
       SessionRequestException('x'): 4,
     };
     for (final entry in errors.entries) {
@@ -200,7 +236,7 @@ void main() {
     });
   });
 
-  test('R16: only the command word decides whether Ctrl+C is handled', () {
+  test('only the command word decides whether Ctrl+C is handled', () {
     expect(FlutterRunRunner.isDapCommand(['dap', '--cwd', '/x']), isTrue);
     expect(FlutterRunRunner.isDapCommand(['--verbose', 'dap']), isTrue);
     expect(

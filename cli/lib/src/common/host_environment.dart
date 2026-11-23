@@ -2,7 +2,18 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-enum HostOs { linux, macos, windows }
+enum HostOs {
+  linux,
+  macos,
+  windows;
+
+  /// The operating system this process runs on.
+  static HostOs get current => Platform.isWindows
+      ? windows
+      : Platform.isMacOS
+      ? macos
+      : linux;
+}
 
 /// The operating system, environment variables and working directory, passed
 /// explicitly so that Windows rules can be tested on any host.
@@ -11,16 +22,11 @@ class HostEnvironment {
     required this.os,
     required Map<String, String> environment,
     required this.currentDirectory,
-    String? homeOverride,
-  }) : environment = Map<String, String>.unmodifiable(environment),
-       _homeOverride = homeOverride;
+    this._homeOverride,
+  }) : environment = Map<String, String>.unmodifiable(environment);
 
   factory HostEnvironment.system() => HostEnvironment(
-    os: Platform.isWindows
-        ? HostOs.windows
-        : Platform.isMacOS
-        ? HostOs.macos
-        : HostOs.linux,
+    os: HostOs.current,
     environment: Platform.environment,
     currentDirectory: Directory.current.path,
   );
@@ -53,8 +59,9 @@ class HostEnvironment {
     return (value == null || value.isEmpty) ? null : value;
   }
 
-  /// Path rules matching [os], rooted at [currentDirectory].
-  p.Context get pathContext => p.Context(
+  /// Path rules matching [os], rooted at [currentDirectory]. Built once: it
+  /// is used on every path operation and the fields never change.
+  late final p.Context pathContext = p.Context(
     style: isWindows ? p.Style.windows : p.Style.posix,
     current: currentDirectory,
   );

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_run/src/watch/content_hash.dart';
 import 'package:test/test.dart';
@@ -96,5 +97,26 @@ void main() {
     await t.hasChanged('c');
     expect(await t.hasChanged('b'), isFalse);
     expect(await t.hasChanged('a'), isTrue);
+  });
+
+  test('seed hashes real files off the main isolate like hasChanged', () async {
+    final dir = Directory.systemTemp.createTempSync('rd_hash');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final same = File('${dir.path}/same.dart')..writeAsStringSync('one');
+    final edited = File('${dir.path}/edited.dart')..writeAsStringSync('one');
+    final big = File('${dir.path}/big.dart')..writeAsStringSync('x' * 32);
+    final gone = '${dir.path}/gone.dart';
+    final t = ContentHashTracker(maxBytes: 16);
+    await t.seed({
+      same.path: 'same',
+      edited.path: 'edited',
+      big.path: 'big',
+      gone: 'gone',
+    });
+    edited.writeAsStringSync('two');
+    expect(await t.hasChanged(same.path, key: 'same'), isFalse);
+    expect(await t.hasChanged(edited.path, key: 'edited'), isTrue);
+    expect(await t.hasChanged(big.path, key: 'big'), isTrue);
+    expect(await t.hasChanged(gone, key: 'gone'), isFalse);
   });
 }

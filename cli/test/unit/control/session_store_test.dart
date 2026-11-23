@@ -5,9 +5,8 @@ import 'dart:io';
 import 'package:flutter_run/src/common/host_environment.dart';
 import 'package:flutter_run/src/control/control_client.dart';
 import 'package:flutter_run/src/control/control_server.dart';
-import 'package:flutter_run/src/control/find_sessions.dart';
 import 'package:flutter_run/src/control/session_info.dart';
-import 'package:flutter_run/src/control/session_paths.dart';
+import 'package:flutter_run/src/control/session_matcher.dart';
 import 'package:flutter_run/src/control/session_store.dart';
 import 'package:test/test.dart';
 

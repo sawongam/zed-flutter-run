@@ -6,6 +6,8 @@ import 'package:flutter_run/src/dap/messages.dart';
 import 'package:flutter_run/src/dap/notices.dart';
 import 'package:test/test.dart';
 
+/// Like the proxy's injector: a request with a timeout fails with a
+/// [TimeoutException] when no answer came in time.
 class FakeInjector implements RequestInjector {
   @override
   bool appStarted = true;
@@ -20,6 +22,13 @@ class FakeInjector implements RequestInjector {
   ]) {
     final c = Completer<DapJson>();
     calls.add((command: command, args: arguments, c: c));
+    if (timeout != null) {
+      Timer(timeout, () {
+        if (!c.isCompleted) {
+          c.completeError(TimeoutException('No response', timeout));
+        }
+      });
+    }
     return c.future;
   }
 

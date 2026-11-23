@@ -1,320 +1,241 @@
-# Architecture (as built, v0.1.0)
+# Architecture
 
-This describes the code that exists in `cli/lib/src/**` and `extension/src/**` on branch `build/mvp`. Where the plan ([IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)) and the code differ, the code is described and the difference is called out. Nothing here has been run in a real Zed yet; see [MANUAL_ZED_TEST.md](MANUAL_ZED_TEST.md) for what still has to be confirmed.
+How the parts fit together and where the code is. [DESIGN.md](DESIGN.md) explains why it is built this way. [CONFIGURATION.md](CONFIGURATION.md) lists every key, flag and exit code. [EXTENDING.md](EXTENDING.md) has recipes for common changes.
 
-Decisions behind this design: [0002](decisions/0002-architecture-dap-proxy.md) (shape), [0003](decisions/0003-languages-rust-extension-dart-proxy.md) (languages), [0004](decisions/0004-architecture-accepted-with-amendments.md) (amendments), [0005](decisions/0005-project-names.md) (names), [0006](decisions/0006-plan-review-resolutions.md) (install model, shutdown, seq range; wins over 0004 where they differ), [0007](decisions/0007-phase6-review-resolutions.md) (process-kill policy, log file rules, initialize timeout). Risks: [risk-register](research/risk-register.md).
+`zed-flutter-run` has two parts. A Rust extension (`extension/`, compiled to WebAssembly) registers the debug adapter `FlutterRun` with Zed and tells Zed how to start it. A Dart executable (`cli/`, compiled with `dart compile exe`) does all the work. As `flutter_run dap` it is the adapter that Zed talks to: a proxy in front of `flutter debug_adapter` (or `dart debug_adapter`) that adds hot reload, reload on save, device selection and DevTools. As `flutter_run <command>` it is the command line that Zed tasks run.
 
-## 1. Components
+## Components
 
 ```
-                     Zed (GUI)
-  .zed/debug.json   .zed/tasks.json   keymap.json         Debug panel / Console tab
-        |                 |                                      ^         |
-        | scenario        | task::Spawn (real PTY terminal)      | output  | DAP over stdio
-        v                 v                                      | events  | (Content-Length)
- +--------------+   +-------------------+                         |         v
- | Rust/WASM    |   | flutter_run <cmd>  |                    +---------------------------+
- | extension    |   | reload | restart  |                    | flutter_run dap            |
- | flutter-run-  |   | select-device     |                    | (Dart exe, one process    |
- | debugger     |   | devices           |  TCP 127.0.0.1     |  per debug session)       |
- |  get_dap_    |   | emulators         |  + token, 1 JSON   |                           |
- |  binary -----+-->| devtools | init   +------------------->|  ControlServer            |
- |  dap_request |   | doctor | status   |  line per conn     |  DapProxy + HotActions    |
- |  _kind       |   +-------------------+                    |  ReloadOnSaveWatcher      |
- |  dap_config_ |        reads session files                 |  DevTools opener          |
- |  to_scenario |        <state>/sessions/<pid>.json <-------+  session file writer      |
- +--------------+        reads/writes <state>/devices/*.json +-------------+-------------+
-   (no locator in 0.1.0)                                                   | DAP over stdio
-                                                                           v
-                                                          flutter debug_adapter   (type "flutter")
-                                                          dart debug_adapter      (type "dart")
-                                                                           |
-                                                                           v
-                                                          flutter run --machine  -->  app on device
+                            Zed
+   .zed/debug.json     .zed/tasks.json                 Debug panel, Console
+          |                   |                              ^        |
+          | scenario          | task in a terminal           | output | DAP over stdio
+          v                   v                              | events | (Content-Length)
+  +---------------+   +--------------------+                 |        v
+  | extension     |   | flutter_run <cmd>  |  TCP 127.0.0.1  +-------------------------+
+  | (Rust, wasm)  |   | reload, restart,   |  token, one     | flutter_run dap         |
+  | lib.rs        |   | status, devices,   |  JSON line per  | DapProxy, HotActions    |
+  | proxy_args.rs |   | select-device,     |  connection     | ControlServer           |
+  | locator.rs    |   | emulators,         +---------------->| ReloadOnSaveWatcher     |
+  | install.rs    |   | devtools, init,    |                 | session file            |
+  +---------------+   | doctor             |                 +------------+------------+
+                      +---------+----------+                              | DAP over stdio
+                                |  reads <state>/sessions/<pid>.json      v
+                                |  reads and writes <state>/devices/   flutter debug_adapter
+                                +-------------------------------------   dart debug_adapter
 ```
 
-| Component | Language | Source | Job |
-|---|---|---|---|
-| Zed extension `flutter-run-debugger` (adapter `FlutterRun`) | Rust, `wasm32-wasip2`, `zed_extension_api 0.7.0` | `extension/` | Finds the `flutter_run` binary, builds its argv and env from the scenario, hands Zed the scenario verbatim, ships the JSON schema. No debugging logic. |
-| `flutter_run dap` (the proxy) | Dart, `dart compile exe` | `cli/lib/src/{dap,control,watch,devtools,sdk,cli}` | Everything that touches a debug session. |
-| `flutter_run <command>` (the CLI) | same executable | `cli/lib/src/{control,devices,devtools,init,cli}` | Commands run from Zed tasks or a terminal. |
-
-Install model (ADR 0006 D1): two steps, the Zed extension plus `flutter_run` on the PATH, because Zed tasks can only run PATH commands. The extension resolves the proxy as: `dap.FlutterRun.binary` setting, then `flutter_run` on the worktree PATH (Windows: `flutter_run.exe` first, `.bat`/`.cmd` shims ignored because Zed would kill only `cmd.exe`), then a download from GitHub Releases that is only attempted when a SHA-256 is pinned in `extension/src/checksums.rs` (it is empty in dev builds, so dev builds never download), then a clear error (`extension/src/install.rs`, `extension/src/lib.rs`).
-
-## 2. Process tree during a Flutter launch
+## Process tree during a launch
 
 ```
 Zed
- +-- flutter_run dap --cwd <dir> --kind flutter --request launch --client-version 0.1.0 [--flutter-sdk ..] [--use-fvm] [--log-file ..]
-      |   (listens on 127.0.0.1:<random port>; owns <state>/sessions/<its pid>.json)
-      +-- flutter debug_adapter            (attach sessions: flutter debug_adapter --no-dds)
-           +-- dart ... debug_adapter / flutter_tools
-                +-- flutter run --machine
-                     +-- frontend_server, dart development-service (DDS), the app (e.g. flutter_tester or the Linux runner)
-
-Separate, short-lived, started by a Zed task in its own terminal (not in the tree above):
-flutter_run reload | restart | select-device | devtools | ...
+ +-- flutter_run dap --cwd <dir> --kind flutter --request launch --client-version <v>
+      |                [--flutter-sdk <dir>] [--use-fvm] [--log-file <path>]
+      |   (listens on 127.0.0.1:<random port>, owns <state>/sessions/<its pid>.json)
+      +-- flutter debug_adapter        (attach: flutter debug_adapter --no-dds)
+           +-- everything the adapter starts: flutter tool, frontend server, DDS, the app
 ```
 
-The adapter is started without a shell (`ManagedProcess.start`, `runInShell: false`). On Windows, `.bat` targets get every argument validated against `cmd.exe` metacharacters (`sdk/process_spec.dart`). Before any stop, the proxy snapshots the adapter's descendants (`ps` table on POSIX, with start-time tokens to avoid pid reuse) so survivors can be swept later (`sdk/process_tree.dart`).
+Commands such as `flutter_run reload` run in their own terminal, outside this tree. `DapCommand` (`cli/lib/src/cli/dap_command.dart`) resolves the SDK, starts the adapter without a shell and hands the session to `DapSessionHost`.
 
-## 3. Sequences as implemented
+## The extension
 
-### 3.1 Launch
+`extension/src/lib.rs` holds the Zed trait glue and the file system work. The logic is in plain modules that the host tests can run.
 
-```
-Zed             extension (wasm)        flutter_run dap                         flutter debug_adapter
- | F4 scenario     |                         |                                          |
- |-dap_request_kind->  Launch/Attach         |                                          |
- |-get_dap_binary-->|  command, argv, env    |                                          |
- |-spawn, stdio -------------------------->  | resolve SDK (see 4.4), start adapter --->| (starts, waits for client)
- |                                            | ControlServer.start; session file written (appStarted=false)
- |-initialize ------------------------------>| pass through ---------------------------->|
- |<-response (+ capabilities, initialized) ---|<-----------------------------------------|
- |-launch{program,cwd,toolArgs,deviceId,      |
- |        reloadOnSave,openDevTools,...} ---->| LaunchRewriter: strip own keys, flutterMode,
- |                                            | inject "-d <id>", default cwd/program ---->| flutter run --machine ...
- |<-output notices: "Using device X (saved selection)", PATH notice, version-mismatch notice
- |-setBreakpoints / configurationDone ------->| pass through
- |<-events flutter.appStart (device, mode) ---| state -> session file (debounced 50 ms)
- |<-event  dart.debuggerUris -----------------| vmServiceUri -> session file; first one: openDevTools page if configured
- |<-event  flutter.appStarted ----------------| appStarted=true -> session file rewritten now; ReloadOnSaveWatcher armed
-```
+- `get_dap_binary` parses the scenario with `proxy_args::parse_config`, finds the binary with `resolve_command`, and returns the command, the arguments from `build_proxy_args`, the environment (Zed's shell environment with the scenario's `env` on top) and the working directory. A relative `cwd` is joined onto the worktree root. The scenario is passed to Zed unchanged as the request arguments.
+- `resolve_command` is one linear flow: the `dap.FlutterRun.binary` setting, then `flutter_run` on `PATH`, then a cached download whose SHA-256 matches the pin, then a fresh download. `install::select_command` makes the first two choices and returns `Use`, `OnlyBatchShim` or `Nothing`. On Windows `flutter_run.exe` is preferred and a `.bat` or `.cmd` wrapper is refused, because Zed would supervise the wrapper and not the real process.
+- A download needs a checksum in `checksums.rs`. The table is empty in development builds, so they never download. The file comes from this repository's GitHub releases, is checked before it is moved into place and is stored as `flutter_run-<version>/flutter_run[.exe]` in the extension's work directory. Older version folders and leftover `.part-<n>` files are removed.
+- `dap_request_kind` returns launch or attach from the `request` key. `dap_config_to_scenario` turns Zed's own debug configuration into a scenario. A program under `bin/` or `tool/` becomes `type: dart`, anything else stays Flutter.
+- `locator.rs` is the debug locator. `scenario_config` maps a task (`flutter run`, `fvm flutter run`, `puro flutter run`, `dart run <file>.dart`, `dart <file>.dart`) to scenario JSON and returns `None` for any other task or any flag it cannot read with certainty. A `$ZED_*` variable in the task's `cwd` is dropped. Only the pair `FlutterRun` and `FlutterRun` is served, and the scenario has no build step.
 
-The proxy never renumbers client messages (ADR 0006 D3 amends 0004 section 2). Its own requests (`hotReload`, `hotRestart`, injected `terminate`/`disconnect`) use seq numbers from 1,000,000,000 upward and their responses are swallowed (`dap/injected_requests.dart`). Messages the proxy makes up for the client (notices, synthetic responses) use the same range.
+## The proxy
 
-### 3.2 Reload from a task (ctrl-f5)
+`DapProxy` (`cli/lib/src/dap/proxy.dart`) routes messages and owns the helpers below. It reads messages through `DapMessage`, a read-only view over the decoded JSON, and forwards `message.raw`, so fields it does not know reach the other side untouched.
 
-```
-Zed task "Flutter: Hot Reload"  ->  flutter_run reload  (terminal tab, hidden on success)
-   1. list <state>/sessions/*.json, ping every one concurrently; refused connection => file pruned;
-      timeout => kept and flagged "unresponsive"
-   2. keep sessions whose projectRoot contains or is inside --project/cwd
-   3. skip: kind != flutter, unresponsive, appStarted=false (each gets one stderr line)
-   4. for each eligible session, in parallel:
-        TCP 127.0.0.1:<port>  {"v":1,"token":..,"id":..,"command":"reload","args":{"reason":"manual"}}
-                                    -> ProxySessionControl.reload -> HotActions.reload('manual')
-                                    -> inject hotReload{reason:"manual"} (seq >= 1e9) -> adapter
-        adapter prints "Reloaded N libraries ..." as an output event -> proxy forwards it -> Zed Console
-        adapter response (swallowed) -> {"ok":true,"result":{"durationMs":..,"coalesced":..}}
-   5. print "Hot reload: <device> <project> ok in 0.6 s", exit 0 (exit 4 failed, 5 timeout, 3 no session)
-   After 3 s without an answer the CLI prints "Waiting... the app may be paused at a breakpoint".
-```
+Routing:
 
-`restart` is the same with `hotRestart`. HotActions allows one action in flight: two reloads coalesce into one result (`coalesced: true`); a reload during a restart (or the reverse) answers `busy`, except a save-triggered reload, which waits for the restart and then runs (`dap/hot_actions.dart`). The adapter only answers a reload after the app resumes, so a reload while paused at a breakpoint waits (120 s default timeout, `--timeout`).
+- Client requests go to the adapter unchanged, except `launch` and `attach` (rewritten), `terminate` and `disconnect` (held by `ShutdownCoordinator`) and `restart` (refused with an explanation for Dart sessions).
+- Adapter responses to injected requests are consumed. Responses to `terminate` and `disconnect` are held. All other adapter messages go to the client, and events also feed `SessionTracker`.
+- Proxy-made messages (notices, synthetic responses) go to the client as `output` events with the `[flutter_run]` prefix.
 
-### 3.3 Reload on save
+Launch rewriting (`launch_rewriter.dart`): `LaunchRewriter.rewrite` removes the keys in `ownKeys`, turns `flutterMode` `profile` or `release` into `--profile` or `--release` in `toolArgs`, adds `-d <id>` from the device lookup order, defaults `cwd` and (Flutter launch) `program`, and checks attach arguments. It returns a `RewriteResult` with the new arguments, the removed keys (`ownConfig`), notes and an optional rejection. A rejected attach gets a failed response and never reaches the adapter.
+
+Injected requests (`injected_requests.dart`): requests the proxy sends itself (`hotReload`, `hotRestart`, `terminate`, `disconnect`) and the notices it makes up use sequence numbers from 1,000,000,000 up. Client numbers are never changed. A client number in that range is logged and reported. `supportedInjections` says which adapter kind accepts `hotReload` and `hotRestart`. The Dart adapter has no hot restart.
+
+`HotActions` (`hot_actions.dart`) runs reload and restart. One action runs at a time. A second reload joins the running one (`coalesced`). A reload during a restart, or the reverse, answers `busy`, except a reload caused by a save, which waits for the restart. Nothing is sent before `flutter.appStarted`. The default timeout is 120 seconds and a notice appears after 3 seconds of waiting.
+
+Lifecycle: `SessionPhaseMachine` (`session_phase.dart`) moves `SessionPhase` through `starting`, `running`, `stopping`, `finishing` and `finished`, forward only. `stopping` may be skipped by a crash or a failed start. An illegal move is logged and ignored.
+
+Start-up: `InitializeWatchdog` starts when `initialize` arrives. After 10 seconds without an answer it posts one "still starting" notice. After 120 seconds `FailureReporter` fails the request with the adapter's last stderr line and the session ends. If the adapter cannot be started at all, `answerStartupFailure` in `dap_command.dart` answers the first request with the error, so Zed shows the reason instead of "adapter exited".
+
+`SessionTracker` follows `flutter.appStart` (device, mode), `dart.debuggerUris` (VM service address), `flutter.appStarted`, `terminated` and `exited`, and publishes `ProxyState` and `ProxyEvent`s. A Dart adapter never sends `flutter.appStarted`, so its first `dart.debuggerUris` counts as started.
+
+Launch, as seen from the proxy:
 
 ```
-file saved -> package:watcher (only lib/, bin/ for Dart programs, and the static folder prefix of each reloadOnSaveGlobs entry)
-  -> PathFilter: .dart files or glob matches; never hidden segments, build/, .dart_tool/, .git/, node_modules/
-  -> mode "changed": SHA-256 of the content must differ from the last seen content (first event for a file counts as changed)
-  -> ReloadCoalescer: trailing debounce (default 200 ms; 10..5000) ; one in flight, at most one follow-up
-  -> notice "Hot reload on save: lib/main.dart (+N more)"   (shown once per batch)
-  -> HotActions.reload('save') -> inject hotReload{reason:"save"}
-  -> success: notice "Hot reload after saving finished in N ms."
-     failure: notice "Error: Hot reload failed: <reason>. Try the task "Flutter: Hot Restart"."
-     busy: files are kept and retried (max delay 2 s)
+Zed                  flutter_run dap                              flutter debug_adapter
+ |-initialize ------->| watchdog armed -------------------------------->|
+ |<-response ---------|<------------------------------------------------|
+ |-launch ----------->| LaunchRewriter: strip own keys, mode, -d <id> -->| starts the app
+ |<-notices: version mismatch, PATH, device in use (after the control server is up)
+ |<-flutter.appStart  | state: device, mode  -> session file (debounced 50 ms)
+ |<-dart.debuggerUris | vmServiceUri; first one may open DevTools (openDevTools)
+ |<-flutter.appStarted| appStarted -> session file now; reload on save armed
 ```
 
-The watcher is armed only after `flutter.appStarted`, and not at all in profile/release/jit_release mode (one notice explains why). When it arms it prints "Reload on save is on for lib/ (changed files only). Set "reloadOnSave": "off" in .zed/debug.json to turn it off. With Zed autosave enabled, every autosave reloads."
+`DapSessionHost` (`cli/lib/src/cli/dap_session_host.dart`) starts the control server and writes the session file concurrently with the proxy (`_controlReady`), so they never delay the first message from Zed. The first launch notices wait for it, so a failure to publish the session can be reported. If publishing fails, debugging still works and a notice says the reload tasks cannot find the session.
 
-### 3.4 Stop (Zed's real path) and the held terminate response
-
-Zed's stop button sends `terminate` (if the adapter advertises `supportsTerminateRequest`, else `disconnect`) and kills the adapter process as soon as that response arrives (ADR 0006, `crates/project/src/debugger/session.rs:2249-2299` @ b61f33f8). So everything must be finished before the `terminate` response is released:
+### Reload from a task
 
 ```
-Zed Stop (Shift-F5)
- |-terminate-------------> DapProxy._handleTerminate
- |                           1. onShutdownStarted: ControlSession.markEnding (reload/restart now answer session_ended),
- |                              watchdog/timers cancelled, session file DELETED
- |                           2. snapshot adapter descendants (<= 3 s)
- |                           3. start a 1 s timer: notice "Stopping the app..." if still not done
- |                           4. forward terminate to the adapter ---------> app.stop; app exits; `terminated` event
- |                           5. adapter's terminate response arrives: HELD (not forwarded)
- |                           6. when response held AND `terminated` seen (or 5 s deadline):
- |                                cleanup = stop watcher, close ControlServer, sweep (see "Kill policy" below:
- |                                the adapter if alive plus its CURRENT descendants; POSIX SIGTERM then SIGKILL;
- |                                Windows taskkill /T /F)
- |<-terminate response----- 7. held response released, client flushed
- |-(Zed kills the proxy: SIGKILL / TerminateProcess; nothing needs to run after this)
-
-Kill policy (ADR 0007 P1, decided; implementation in progress, not verified by me):
- - Normal stop (terminate, disconnect, stdin EOF): the sweep targets the adapter if still alive plus its descendants
-   from a fresh snapshot taken right before the sweep. Processes seen earlier that have since left the tree (for
-   example a Gradle daemon started during an Android build) are NOT killed. The 2 s snapshot poll keeps only pids
-   that are still alive (bounded set) and stops at shutdown.
- - Only after an adapter CRASH are earlier-seen, reparented processes also swept, with the PID-reuse guard, and never
-   shared daemons: adb, Gradle daemons, Kotlin compile daemons, other sessions' Dart tooling daemon.
- - POSIX: SIGTERM, SIGINT and SIGHUP handlers run the same cleanup as stdin EOF. A SIGKILL of the proxy cannot be
-   handled; then the adapter may survive until its stdin read fails. Known issue; Zed only kills the proxy after the
-   held terminate response, so the normal path is clean.
-
-Variants (dap/proxy.dart):
- - disconnect without a prior terminate (launch): inject terminate (<= 5 s), forward disconnect, wait <= 5 s for
-   the adapter to exit, same cleanup, then the held disconnect response is released and the proxy exits 0.
-   (The spike showed that disconnect alone orphans the app and DDS.)
- - stdin EOF (Zed died / window closed): same cleanup with injected terminate then disconnect, no client response.
- - adapter crash or exit without an orderly stop: notice "The Flutter debug adapter stopped unexpectedly (exit code N)...",
-   synthetic `terminated` event, session file deleted, exit with the adapter's code.
- - attach sessions: terminate/disconnect only detach; the adapter never kills the app (docs/research/attach-probe.md).
+Zed task "Flutter: Hot Reload"  ->  flutter_run reload
+  1. list <state>/sessions/*.json and ping each concurrently; a stale file is deleted,
+     a session that does not answer is kept and marked unresponsive
+  2. keep sessions whose project root contains or lies inside --project (default: current directory)
+  3. skip Dart sessions, unresponsive sessions and sessions whose app has not started
+  4. for each remaining session, in parallel, over TCP:
+       {"v":1,"token":...,"id":1,"command":"reload","args":{"reason":"manual"}}
+       -> ProxySessionControl.reload -> HotActions.reload -> injected hotReload -> adapter
+  5. print one line per session; exit 0, 4 (failed), 5 (no answer within --timeout, default 120 s), 3 (no session)
 ```
 
-### 3.5 Attach (with `--no-dds`)
+`restart` is the same with `hotRestart`. After 3 seconds the command prints a note that the app may be paused at a breakpoint. The adapter answers a reload only after the app resumes, so a paused app delays the answer.
+
+### Stopping
+
+Zed's stop button sends `terminate` and kills the adapter process as soon as the response arrives. The proxy holds that response until cleanup is done. [DESIGN.md](DESIGN.md) gives the reasons. `ShutdownCoordinator` (`shutdown_coordinator.dart`) owns every way a session can end.
 
 ```
-Scenario "Flutter: Attach": {"request":"attach","type":"flutter","vmServiceUri":"http://127.0.0.1:PORT/TOKEN/","toolArgs":["-d","<id>"]}
-extension: --request attach  ->  proxy starts: flutter debug_adapter --no-dds
+Zed Stop
+ |-terminate-------> 1. onShutdownStarted: hot actions now answer session_ended, watcher and timers
+ |                      stop, session file deleted
+ |                   2. snapshot the adapter's descendants (at most 3 s)
+ |                   3. forward terminate; after 1 s still running: notice "Stopping the app..."
+ |                   4. adapter answers: response held. App exits: `terminated` event
+ |                   5. when the response is held and `terminated` seen, or after 5 s:
+ |                      stop the watcher, close the control server, kill what is left
+ |<-response--------- 6. held response released and flushed
+ |-(Zed kills the proxy; nothing runs after this)
 ```
 
-`flutter run` already runs a DDS. Without `--no-dds` the adapter starts a second one on top that is orphaned after every disconnect (attach probe, section "The extra DDS"). `--no-dds` is added for attach only (`cli/dap_command.dart`) and never for launch (the probe did not verify launch without DDS, and DevTools needs DDS). Facts from the probe that shape behaviour:
+The other ways to end:
 
-- `-d <deviceId>` in `toolArgs` is mandatory; without it the adapter dies with "More than one device connected". The proxy injects `-d` from the same sources as for launch (see 4.5), and shows the device hint if Flutter complains.
-- `vmServiceInfoFile` with the file written by `flutter run --vmservice-out-file` hangs silently. Use `vmServiceUri`. A JSON `{"uri": "..."}` info file works but we do not generate one.
-- Attaching with neither URI nor info file waits silently; the proxy watchdog prints "Still waiting for the app. Start it with "flutter run", or set "vmServiceUri" in .zed/debug.json." after 15 s.
-- No `stopped(entry)` on attach; `flutter.appStarted` arrives about 2 s after `attach`, which arms reload on save and unlocks `reload`/`restart`.
-- Stop detaches; the original `flutter run` and the app keep running.
+- `disconnect` without `terminate`: for a launch session the proxy injects `terminate` (at most 5 s), forwards `disconnect`, waits for the answer plus 500 ms or at most 5 s for the adapter to exit, runs the same cleanup, answers Zed and exits 0.
+- Standard input closes, or SIGINT, SIGTERM or SIGHUP arrives (Windows watches only SIGINT): the same cleanup with an injected `terminate` and then `disconnect`, and no response to Zed. A SIGKILL cannot be handled.
+- The adapter exits on its own with code 0 after `terminated`: the session ends with 0. Any other unasked exit is a crash. The proxy fails a pending `initialize`, relays the adapter's stderr, posts a notice, sends a `terminated` event and exits with the adapter's code.
+- Attach sessions never get an injected `terminate`, so the app keeps running. `attach` also starts `flutter debug_adapter --no-dds`, because `flutter run` already runs a DDS.
 
-## 4. Module map (`cli/lib/src`)
+While the adapter runs, the coordinator records its descendants so a crash can still be cleaned up. It polls every 2 seconds (6 on Windows). After three readings in a row that show the same tree it polls every 20 seconds (30 on Windows), and process activity the tracker reports (a new VM service, the app starting) takes a reading at once and goes back to the fast rate.
 
-Rule from the plan: a module imports `package:*`, `dart:*`, `common/` and itself only. `cli/` is the only place where modules are wired together (`cli/wiring.dart`, `cli/dap_command.dart`).
+The kill step ends the adapter if it is still alive and its descendants as read at that moment. `ManagedProcess.terminateTree` reads the process table once and passes the reader to `killTree` (`sdk/process_tree.dart`). On POSIX `killTree` sends SIGTERM, waits two seconds and sends SIGKILL, signalling only pids that are provably ours: current descendants, or snapshot pids whose recorded start time still matches. Pids 0 and 1 are never signalled. On Windows it runs `taskkill /T /F`. Processes seen earlier that have left the tree, such as a Gradle daemon, are not touched. After a crash, earlier descendants are included, except `adb`, Gradle and Kotlin daemons and the Dart tooling daemon (`isSharedDaemonCommand`). All waits are in `proxy_options.dart` (`ProxyOptions`, `ProxyTimings`), so tests shrink them.
 
-### 4.1 `common/`
-`version.dart` holds `packageVersion` (`0.1.0`), `controlProtocolVersion = 1`, `sessionFileVersion = 1`, `adapterName = 'FlutterRun'`, `toolName`, `envPrefix`. `errors.dart` defines `FlutterRunException` and subclasses, each with an exit code (`ExitCodes`: 0 ok, 1 internal, 2 usage, 3 no session, 4 session error, 5 timeout, 6 SDK not found, 7 device error, 8 no project, 9 manual action required, 10 external tool failed, 130 interrupted). `paths.dart` has canonical/case-aware path comparison, `findProjectRoot` (nearest `pubspec.yaml`), `findExecutableOnPath` (PATHEXT on Windows), `projectRootHash` (first 16 hex of SHA-256) and `stateBaseDirectory` (see section 6). `files.dart` writes files atomically (temp file plus rename, 10 retries for Windows sharing violations, keeps symlinks intact) and creates owner-only directories. `logger.dart` logs to stderr and optionally a file (`--log-file`, `FLUTTER_RUN_LOG`), never to stdout; the file also receives all DAP traffic. `console.dart` is the CLI's stdout/stderr with `NO_COLOR` handling. `host_environment.dart` abstracts OS, env vars, cwd and path style so Windows logic is testable anywhere. `global_options.dart` registers `--verbose/-v`, `--project`, `--flutter-sdk`.
+## Control channel
 
-### 4.2 `dap/` (proxy core)
-`framing.dart` is the incremental `Content-Length` decoder/encoder (8 KiB header limit, 64 MiB body limit (ADR 0007, S7), tolerant of split UTF-8). `channel.dart` wraps a byte stream pair as a DAP message channel with flush. `messages.dart` has request/response/event predicates and builders for synthetic messages. `injected_requests.dart` allocates seq numbers from 1,000,000,000, completes the matching future on the adapter's response, and swallows late responses of timed-out requests (bounded set of 64). `launch_rewriter.dart` rewrites `launch`/`attach` arguments: it strips the keys this tool owns (`flutterSdkPath, deviceId, reloadOnSave, reloadOnSaveGlobs, reloadOnSaveDebounceMs, openDevTools, logFile, useFvm, adapter, label, flutterMode, platform`), turns `flutterMode` `profile`/`release` into `--profile`/`--release` in `toolArgs` (unless a mode flag is already there), injects `-d <id>` and defaults `cwd` and (Flutter launch) `program: lib/main.dart`. `proxy.dart` is the `DapProxy`: message routing, the terminate/disconnect/EOF/crash flows of 3.4, an `initialize` watchdog (ADR 0007 P2: 120 s, with one notice after 10 s, "Flutter is still starting. The first run after an upgrade, or another flutter command holding the startup lock, can take a while."; on timeout the failure becomes a failed `initialize` response plus a stderr-category output event), event capture (`dart.debuggerUris`, `flutter.appStart`, `flutter.appStarted`, `terminated`, `exited`), and the device hint on Flutter's "more than one device" / "no devices" errors. `proxy_state.dart` is the immutable state snapshot (request, kind, cwd, deviceId, mode, appId, vmServiceUri, appStarted, ended) that feeds the session file. `hot_actions.dart` is the reload/restart coordinator of 3.2. `notices.dart` formats console notices (cyan `[flutter_run] ...`; warnings prefixed `Warning:`, errors `Error:`; ANSI is fine because Zed sends `supportsANSIStyling`). `device_hints.dart` maps Flutter's error texts to the hint sentences.
-
-### 4.3 `control/` (session files and the control channel)
-`control_protocol.dart` defines error codes, the 64 KiB line limit, the command set (`ping`, `reload`, `restart`) and the `SessionControl` interface. `control_server.dart` is the loopback TCP server (one request line per connection, constant-time token compare, 64 connections max, 16 pending without a full line, 3 s to send the line). `control_client.dart` sends a request and parses the reply; `ping` returns alive/unresponsive/stale (only a refused connection or a wrong token/pid proves staleness). `session_info.dart` is the session file model. `session_store.dart` creates the sessions directory (0700 on POSIX), writes the file atomically with serialised updates (a late update cannot resurrect a deleted file), lists sessions, pings all concurrently and prunes stale files (only if the file still holds the pinged token and pid). `session_paths.dart`, `session_matcher.dart`, `find_sessions.dart` map project directories to sessions (a session matches when its project root contains the directory or lies inside it). `hot_command.dart` is the shared logic of `reload`/`restart` (`reload_command.dart`, `restart_command.dart`); `status_command.dart` prints sessions from the files (`--json` available).
-
-### 4.4 `sdk/`
-`sdk_resolver.dart` finds the Flutter (or, for `type: dart`, Dart) SDK and records every step for `doctor`. Flutter order: (1) `--flutter-sdk` / scenario `flutterSdkPath`, (2) env `FLUTTER_RUN_FLUTTER_SDK`, then fvm (project `.fvm/flutter_sdk` link, `.fvmrc`, legacy fvm config, fvm cache), puro, `FLUTTER_ROOT`, and finally `flutter` on the PATH. `useFvm` makes the fvm result mandatory. `sdk_steps.dart` is the file-system seam used by the resolver. `process_spec.dart` builds the process spec and validates `.bat` arguments. `managed_process.dart` starts children, exposes stdio, snapshots descendants, and terminates trees. `process_tree.dart` reads the process table and kills trees (SIGTERM, grace, SIGKILL; Windows `taskkill /PID n /T /F`; pids 0 and 1 are never signalled).
-
-### 4.5 `devices/`
-`flutter_device.dart` parses `flutter devices --machine` (tolerating banner lines). `device_lister.dart` runs it with a 60 s timeout. `device_store.dart` persists the chosen device per project in the state directory (section 6). `picker.dart` is the numbered terminal picker (number or id, rescan). `emulators.dart` parses `flutter emulators` and validates ids before `--launch`. `commands/` has `devices`, `select-device [--device ID | --clear]` and `emulators [--launch ID]`. Device precedence at launch, first hit wins: `-d`/`--device-id` already in `toolArgs`, scenario `deviceId`, env `FLUTTER_RUN_DEVICE`, saved device, none (Flutter decides; the proxy says so).
-
-### 4.6 `watch/`
-`reload_config.dart` is a tolerant parser for `reloadOnSave` (`changed` default, `always`, `off`; booleans accepted), `reloadOnSaveGlobs`, `reloadOnSaveDebounceMs`. `path_filter.dart` decides which paths trigger and which directories are watched. `content_hash.dart` keeps SHA-256 per file (2 MiB limit, 5000 entries). `coalescer.dart` is the debounce plus one-in-flight/one-follow-up logic. `reload_on_save_watcher.dart` ties them to `package:watcher`.
-
-### 4.7 `devtools/`
-`pages.dart` lists `inspector, performance, cpu-profiler, memory, network, logging`. `url_builder.dart` normalises the VM service address and builds `http://H:P/TOKEN=/devtools/<page>?uri=<ws uri>`, the URL under which DDS serves DevTools; `isSafeBrowserUrl` only allows http(s) to 127.0.0.1/localhost/::1. `browser_opener.dart` launches `xdg-open` / `open` / `rundll32 url.dll,FileProtocolHandler` detached, no shell. `devtools_opener.dart` is the proxy-side one-shot open (first `dart.debuggerUris` only, when the scenario sets `openDevTools`). `commands/devtools_command.dart` is `flutter_run devtools [page] [--print]`, using the newest live session that has a `vmServiceUri`.
-
-### 4.8 `init/`
-`project_detect.dart` finds the pubspec and classifies Flutter vs Dart package and fvm use. `templates.dart` generates the debug scenarios (Flutter: Debug, Run (no debug), Profile, Attach; or `Dart: Debug <entry>`) and tasks (Hot Reload, Hot Restart, Select Device, Launch Emulator, Devices, Open DevTools, DevTools Inspector, DevTools Performance, Doctor). `json_merge.dart` merges by `label` into existing JSON files, and refuses (exit 9, prints the snippet) when a file has comments, is not UTF-8 or is not an array; `--force` keeps a `.bak`. `keymap.dart` produces the keymap snippet (`ctrl-f5` reload, `ctrl-shift-f5` restart, or `shift-cmd-f5` on macOS, `ctrl-alt-shift-d` DevTools) and the key table. `commands/init_command.dart` is `init [--force] [--dry-run]`.
-
-### 4.9 `cli/` (composition root)
-`runner.dart` registers all commands, maps exceptions to exit codes and prints the exit-code table. `wiring.dart` builds the shared objects (SDK resolver, stores, control client, browser opener) and the adapters between modules: `ManagedAdapterConnection` (process to DAP channel), `ProxySessionControl` (control requests to `HotActions`), `reloadForSave`. `dap_command.dart` is `flutter_run dap`: resolves the SDK, starts the adapter, builds the `DapProxy`, control server, session file and watcher, and turns startup failures into a failed first response plus a stderr console message (because Zed only says "adapter exited" otherwise). `path_notice.dart` builds the "flutter_run is not on your PATH" notice and per-OS PATH hints. `doctor_command.dart` prints version, OS, executable, project, the SDK trace, PATH status, sessions, `.zed` files and env overrides. `version_command.dart` prints the version.
-
-## 5. Contracts
-
-### 5.1 Control protocol v1 (`cli/lib/src/control/control_protocol.dart`, `control_server.dart`, `control_client.dart`)
-
-Transport: TCP `127.0.0.1:<port>` (`port` from the session file), one connection per request. The client sends exactly one line of UTF-8 JSON ended by `\n` (at most 65,536 bytes before the newline, sent within 3 s) and reads one reply line. The server answers and half-closes (2 s grace).
-
-Request:
+The session file is `<state>/sessions/<pid>.json`. The directory is created with mode 0700 on POSIX. Writes are atomic and serialised, and an update after `delete` does nothing. It is written when the proxy starts, rewritten (debounced 50 ms) when the device or VM service address changes, written at once on `flutter.appStarted`, and deleted first thing in shutdown.
 
 ```json
-{"v": 1, "token": "<token from the session file>", "id": 1, "command": "reload", "args": {"reason": "manual"}}
+{"version":1,"pid":12345,"port":40123,"token":"<43 base64url characters>",
+ "projectRoot":"/home/me/app","cwd":"/home/me/app","kind":"flutter","request":"launch",
+ "startedAt":"2026-01-01T12:00:00.000Z","deviceId":"linux","mode":"debug",
+ "vmServiceUri":"ws://127.0.0.1:33171/abc=/ws","appStarted":true}
 ```
 
-| Field | Type | Rules |
-|---|---|---|
-| `v` | int | must equal 1, else `unsupported_version` |
-| `token` | string | must equal the session token (constant-time), else `unauthorized` |
-| `id` | int, string or null | echoed back; any other type is `bad_request` |
-| `command` | string | one of `ping`, `reload`, `restart`, else `unknown_command` |
-| `args` | object, optional | `reload` reads `reason` (string, default `"manual"`; the watcher uses `"save"`); others ignore it |
+`deviceId`, `mode` and `vmServiceUri` are omitted until known. A file with another `version`, or one that does not parse, is skipped.
 
-Success reply: `{"v":1,"id":1,"ok":true,"result":{...}}`. Failure reply: `{"v":1,"id":1,"ok":false,"error":{"code":"<code>","message":"<text>"}}`.
+`ControlServer` (`control/control_server.dart`) listens on `127.0.0.1` with a random port. The token is 32 random bytes. Each connection carries one request line of JSON, ended by a newline, and gets one reply line:
 
-| Command | `result` fields |
+```
+{"v":1,"token":"...","id":1,"command":"reload","args":{"reason":"manual"}}
+{"v":1,"id":1,"ok":true,"result":{"durationMs":600,"coalesced":false}}
+{"v":1,"id":1,"ok":false,"error":{"code":"busy","message":"..."}}
+```
+
+The commands are `ping` (result `pid`, `version`, `protocol`), `reload` (`durationMs`, `coalesced`) and `restart` (`durationMs`). Error codes are in `ControlErrorCode`: `bad_request`, `unsupported_version`, `unauthorized`, `payload_too_large`, `unknown_command`, `app_not_started`, `busy`, `adapter_error`, `timeout`, `session_ended` and `internal`. The token is compared in constant time.
+
+Limits: a request line is at most 64 KiB and must arrive within 3 seconds. At most 64 connections are open and at most 16 of them may be waiting for a line. A connection over the limit gets `busy` with `id: null`.
+
+`ControlClient.ping` returns alive, unresponsive or stale. A refused connection, a reply that is not the protocol, a wrong token or a different pid proves the session is gone, so `SessionStore.list` deletes the file, but only if it still holds the pinged token and pid. A timeout leaves the file. `status` reads the files and has no control command.
+
+## Reload on save
+
+Zed has no on-save hook for extensions, so `ReloadOnSaveWatcher` (`cli/lib/src/watch/`) watches files itself, once the app has started.
+
+- Watched folders (`PathFilter.watchDirectories`): `lib/`, `bin/` for Dart programs, and the fixed folder prefix of each entry in `reloadOnSaveGlobs`. A glob without a folder prefix is reported and ignored.
+- A path triggers if it ends in `.dart` or matches a glob. Hidden segments are ignored at any depth. `build`, `.dart_tool`, `.git` and `node_modules` are ignored at the project's top level.
+- In `changed` mode a file triggers only if the SHA-256 of its content differs from the last seen one (`ContentHashTracker`; files over 2 MiB always count, at most 5000 entries kept). The files already present when the watcher starts are hashed once, on a background isolate (`ContentHashTracker.seed`), so the CPU this takes does not hold up the DAP traffic.
+- `ReloadCoalescer` waits for the debounce (default 200 ms, range 10 to 5000), runs one reload at a time and queues at most one follow-up. If `HotActions` answers busy, it retries with a growing delay of at most 2 seconds.
+- The reload is `HotActions.reload(reason: 'save')`. A save-triggered reload has no timeout of its own, because the app may be paused at a breakpoint.
+- It is not started when `reloadOnSave` is `off` or the app runs in profile, release or jit_release mode.
+
+## SDK discovery
+
+`SdkResolver` (`cli/lib/src/sdk/sdk_resolver.dart`) takes the first hit and records each step for `doctor`:
+
+1. `--flutter-sdk` or the scenario's `flutterSdkPath`. An explicit path that is not an SDK is an error and is not skipped.
+2. `FLUTTER_RUN_FLUTTER_SDK`.
+3. fvm: the `.fvm/flutter_sdk` link in the project or a parent, then the version from `.fvmrc` or `.fvm/fvm_config.json` looked up in the fvm cache (`FVM_CACHE_PATH`, `FVM_HOME`, `~/fvm`, and `%LOCALAPPDATA%\fvm` on Windows).
+4. puro (`.puro.json`).
+5. `FLUTTER_ROOT`.
+6. `flutter` on `PATH`.
+
+With `useFvm`, the search ends after step 3. For `type: dart` the same walk runs, then the Dart bundled with that SDK is used, then `DART_SDK`, then `dart` on `PATH`.
+
+## Device selection
+
+`LaunchRewriter` picks the device for a Flutter launch or attach in this order: `-d` or `--device-id` already in `toolArgs`, the scenario's `deviceId`, `FLUTTER_RUN_DEVICE`, the device saved by `select-device`, then nothing (Flutter chooses). An id outside `safeIdPattern` (`sdk/process_spec.dart`) is dropped with a note. `SessionNotices` says so when the device came from the environment or the saved selection, or when none was chosen. Dart sessions skip this.
+
+## Module map
+
+All of this is under `cli/lib/src/`.
+
+| Module | Contents |
 |---|---|
-| `ping` | `pid` (int), `version` (string, `packageVersion`), `protocol` (int, 1) |
-| `reload` | `durationMs` (int), `coalesced` (bool; true when it joined a reload already running) |
-| `restart` | `durationMs` (int) |
+| `common/` | Version and protocol constants, `ExitCodes` and exceptions, `Clock`, `HostEnvironment`, paths and state directory, atomic file writes, `Logger`, `Console` |
+| `dap/` | The proxy, framing, `DapMessage`, launch rewriting, injected requests, `HotActions`, lifecycle, start-up watchdog, `ShutdownCoordinator`, notices |
+| `control/` | Control protocol and server, `ControlClient`, session file model and `SessionStore`, the `reload`, `restart` and `status` commands |
+| `sdk/` | `SdkResolver`, process start (`ManagedProcess`, `ProcessSpec`, `ProcessRunner`), process table and `killTree` |
+| `devices/` | Device and emulator listing, `DeviceStore`, the picker, the `devices`, `select-device` and `emulators` commands |
+| `watch/` | Reload-on-save settings, path filter, content hashes, coalescer, watcher |
+| `devtools/` | Page names, URL building, browser opener, the `devtools` command |
+| `init/` | Project detection, scenario and task templates, JSON merge, keymap snippet, the `init` command |
+| `cli/` | `FlutterRunRunner`, `Wiring`, `buildCommands`, `DapCommand`, `DapSessionHost`, `SessionNotices`, `doctor` and `version` |
 
-Error codes (`ControlErrorCode.wire`): `bad_request`, `unsupported_version`, `unauthorized`, `payload_too_large`, `unknown_command`, `app_not_started`, `busy` (also sent with `id: null` when the server has too many connections), `adapter_error`, `timeout`, `session_ended`, `internal`.
+Import rule: `common/` imports no other module, each feature module imports only `common/` and itself, and only `cli/` imports the feature modules and connects them. `cli/test/unit/architecture_test.dart` checks every import.
 
-There is no control `status` command; `flutter_run status` reads the session files and uses `ping` only to prune stale ones.
+Code that touches time, processes, signals or the OS takes an interface instead:
 
-### 5.2 Session file v1 (`cli/lib/src/control/session_info.dart`)
-
-Path: `<state>/sessions/<pid>.json`, rewritten atomically. Created when the proxy starts, updated when launch/attach is rewritten, when the device or VM service becomes known (debounced 50 ms) and immediately at `flutter.appStarted`. Deleted as the first step of shutdown. Unknown keys are ignored by readers; another `version` makes the file invisible.
-
-```json
-{
-  "version": 1,
-  "pid": 12345,
-  "port": 40123,
-  "token": "<base64url, 43 chars, 32 random bytes>",
-  "projectRoot": "/tmp/rdf-sample",
-  "cwd": "/tmp/rdf-sample",
-  "kind": "flutter",
-  "request": "launch",
-  "startedAt": "2026-11-03T12:00:00.000Z",
-  "deviceId": "linux",
-  "mode": "debug",
-  "vmServiceUri": "ws://127.0.0.1:33171/xzgCOabbXpo=/ws",
-  "appStarted": true
-}
-```
-
-Required: `version, pid, port, token, projectRoot, cwd, kind` (`flutter` or `dart`), `request` (`launch` or `attach`), `startedAt` (ISO 8601 UTC). Optional: `deviceId, mode, vmServiceUri` (omitted when unknown), `appStarted` (bool, written always, false at first).
-
-### 5.3 Saved device file (`devices/device_store.dart`)
-
-`<state>/devices/<first 16 hex of sha256(project root)>.json`: `{"version":1,"projectRoot":..,"deviceId":..,"name":..,"platform":..,"savedAt":..}`. Ignored when the version or project root does not match.
-
-### 5.4 Environment variables
-
-`FLUTTER_RUN_FLUTTER_SDK` (SDK root), `FLUTTER_RUN_DEVICE` (device id), `FLUTTER_RUN_LOG` (log file), `FLUTTER_RUN_LOG_LEVEL` (`error|warn|info|debug|trace`), `FLUTTER_RUN_STATE_DIR` (state base directory), `NO_COLOR` (CLI output only). `FLUTTER_RUN_TEST_EXE` is used by the integration tests.
-
-### 5.5 Scenario keys (`extension/debug_adapter_schemas/FlutterRun.json`)
-
-Own keys (stripped before the adapter sees them): `flutterSdkPath, useFvm, deviceId, flutterMode, reloadOnSave, reloadOnSaveGlobs, reloadOnSaveDebounceMs, openDevTools, logFile, platform, adapter, label`. `type` (`flutter` default, `dart`), `request` (`launch` default, `attach`), `cwd`, `env` and `logFile`/`flutterSdkPath`/`useFvm` are also read by the extension to build the proxy argv. Everything else (`program, args, toolArgs, vmServiceUri, vmServiceInfoFile, stopOnEntry, noDebug, debugSdkLibraries, ...`) passes to the Dart/Flutter adapter.
-
-## 6. State locations
-
-| OS | State base directory (`flutter_run`) | Contents |
+| Interface | Defined in | Real implementation |
 |---|---|---|
-| Linux | `$XDG_STATE_HOME/flutter_run`, else `~/.local/state/flutter_run` | `sessions/<pid>.json`, `devices/<hash>.json` |
-| macOS | `~/Library/Application Support/flutter_run` | same |
-| Windows | `%LOCALAPPDATA%\flutter_run`, else `<home>\AppData\Local\flutter_run` | same |
-| any | `$FLUTTER_RUN_STATE_DIR` overrides all of the above | same |
+| `Clock` | `common/clock.dart` | `SystemClock` |
+| `HostEnvironment` | `common/host_environment.dart` | `HostEnvironment.system()` |
+| `ProcessRunner` | `sdk/process_runner.dart` | `SystemProcessRunner` |
+| `SignalSource` | `cli/signal_source.dart` | `SystemSignalSource` |
+| `AdapterConnection` | `dap/channel.dart` | `ManagedAdapterConnection` (`cli/wiring.dart`) |
+| `RequestInjector` | `dap/hot_actions.dart` | `DapProxy` |
+| `SessionControl` | `control/control_protocol.dart` | `ProxySessionControl` (`cli/wiring.dart`) |
+| `ControlEndpoint` | `control/control_protocol.dart` | `ControlServer` |
 
-Other places: the project's `.zed/debug.json` and `.zed/tasks.json` (written by `init`, usually committed); the user's Zed keymap (never written, `init` prints a snippet); the extension's download directory, Zed's per-extension work dir, `.../extensions/work/flutter-run-debugger/flutter_run-0.1.0/flutter_run[.exe]` (only used when a checksum is pinned); the optional log file from `logFile` / `--log-file` / `FLUTTER_RUN_LOG`. Nothing is written to the project except `.zed/*` by `init`.
+Objects are connected through constructor arguments, with no service locator.
 
-## 7. Security model
+## State and files
 
-- The control server binds `127.0.0.1` only, on a random port. The only credential is a 256-bit random token in the session file. The sessions directory is mode 0700 on POSIX (no per-file chmod, ADR 0006 D4) and lives in the per-user profile on Windows, so other users cannot read it. A process of the same user could read it anyway; nothing further is defended against.
-- The command set is a fixed enum (`ping`, `reload`, `restart`); nothing from a request is executed or interpolated. Requests are limited to 64 KiB, 64 connections, 16 connections without a full line, 3 s to send the line.
-- Child processes are started without a shell. On Windows `.bat`/`.cmd` targets get argument validation; emulator ids are checked against a safe pattern before `--launch`, and a device id must be one `flutter devices` listed.
-- DevTools URLs are only opened when they point at the local machine (`isSafeBrowserUrl`).
-- The extension downloads the proxy only from `github.com/sawongam/zed-flutter-run/releases/download/v<version>/<asset>` and only after verifying a SHA-256 pinned in the extension source (`download_file` itself does no hash check). With no pin (all dev builds) it refuses to download. The manifest declares the `download_file` capability for `github.com/sawongam/zed-flutter-run/**`.
-- Logs may contain full DAP traffic (paths, variable values). They are only written when `logFile` / `--log-file` / `FLUTTER_RUN_LOG` is set.
-- `logFile` rules (ADR 0007 P3, decided): a project's `debug.json` must not turn the proxy into a write primitive (`~/.bashrc`, `authorized_keys`). So the path must end in `.log`, its parent directory must already exist (no `mkdir -p`), the file is opened with owner-only permissions (0600 on POSIX) and control characters are escaped in every logged line. `FLUTTER_RUN_LOG` follows the same rules.
-- Project-controlled execution (ADR 0007 P4): `flutterSdkPath`, `.fvm/flutter_sdk` and the scenario `env` choose which binaries run, like Zed tasks and the official Dart extension. Open only projects you trust.
+| OS | State directory |
+|---|---|
+| Linux | `$XDG_STATE_HOME/flutter_run`, else `~/.local/state/flutter_run` |
+| macOS | `~/Library/Application Support/flutter_run` |
+| Windows | `%LOCALAPPDATA%\flutter_run` |
 
-## 8. What Zed shows
+`FLUTTER_RUN_STATE_DIR` overrides all three. It holds `sessions/<pid>.json` and `devices/<first 16 hex of the SHA-256 of the project root>.json`. The device file has `version`, `projectRoot`, `deviceId`, `name`, `platform` and `savedAt`, and is ignored if the version or project root does not match.
 
-Zed's debugger UI only displays DAP `output` events (Console tab) plus the standard stopped/variables/threads views. It ignores custom events, `progress*` events and `showUser`. Therefore:
+Outside the state directory: `.zed/debug.json` and `.zed/tasks.json` in the project (written only by `init`), the downloaded binary in the extension's work directory, and the optional log file. `init` never writes the keymap.
 
-- All proxy feedback (device in use, reload on save, DevTools URL, "Stopping the app...", PATH and version warnings, startup failures) is sent as `output` events with the `[flutter_run]` prefix. Startup failures also fail the first request so Zed shows something other than "adapter exited".
-- Results of `reload`/`restart` appear in the terminal tab of the task that ran them (the tab hides on success, stays on failure) and, for the reload itself, in the Console as the adapter's own `Reloaded N libraries ...` output.
-- Zed's keys: F4 opens the debug picker, F5 reruns the last scenario or continues, Shift-F5 stops. `ctrl-f5` and `ctrl-shift-f5` are our keymap bindings and only work while a session runs.
+## Security
 
-## 9. Known limits
-
-- Never run in a real Zed by the authors (R14). Open questions are listed in [MANUAL_ZED_TEST.md](MANUAL_ZED_TEST.md), notably whether Zed's rerun/restart sends DAP `restart` and whether `capabilities` events enable it.
-- No debug locator in 0.1.0 (ADR 0006 D4); "Run" buttons next to `main()` do not use FlutterRun. `.vscode/launch.json` entries of type `dart`/`flutter` are not picked up by Zed for any adapter.
-- No Zed UI of our own: no status-bar item, no device picker, no toolbar buttons. Everything goes through tasks, keybindings and the Console.
-- A reload while the app is paused at a breakpoint waits until it is resumed. The adapter reports `success: true` for hot actions even when nothing is attached, so the proxy only injects them after `flutter.appStarted`.
-- Reload on save watches `lib/` (plus `bin/` for Dart programs and glob folders) only. Zed autosave makes every autosave reload. Hot restart on save does not exist.
-- Attach needs `toolArgs: ["-d", "<id>"]` (or a saved device); `vmServiceInfoFile` in the format written by `flutter run --vmservice-out-file` does not work.
-- Hot Reload / Hot Restart tasks use `"save": "all"` (ADR 0007 P5), so reload sees what is on screen; with reload on save this can produce two reloads that the coalescer merges.
-- Dart programs (ADR 0007 P5, decided): hot restart is refused (`dart debug_adapter` supports `hotReload` but not `hotRestart`); the session counts as "started" at the first `dart.debuggerUris`; `devtools` is refused with a hint because that DDS does not serve DevTools. The ignored folders `build/`, `.dart_tool/`, `.git/`, `node_modules/` apply only at the project's top level; hidden segments are ignored at any depth.
-- Dart console programs (`type: dart`): the `reload`/`restart` tasks skip them ("it is a Dart console session, not a Flutter app"). The reload-on-save watcher is still armed for them (it watches `lib/` and `bin/`) and injects `hotReload`, but whether `dart debug_adapter` accepts that was not verified; treat it as untested.
-- Windows: no POSIX signals are used; the control channel is the same TCP design. `.bat` wrappers for `flutter_run` are rejected by the extension. Windows ARM uses the x64 binary under emulation. 32-bit systems are unsupported.
-- Release binaries are unsigned (macOS ad hoc signature from `dart compile exe`, no notarization; Windows no Authenticode). See [RELEASE.md](RELEASE.md).
-- The extension is a debug-adapter-only extension; it does not provide the Dart language or LSP. The user keeps the official Dart extension for that ([coexistence research](research/coexistence-with-dart-extension.md)).
+- The control server binds `127.0.0.1` only. The only credential is the token in the session file, which sits in a user-only directory. A process of the same user can read it, and nothing defends against that.
+- Control commands are a fixed set (the handler map in `ControlServer`). Nothing in a request is executed.
+- Child processes start without a shell. For `.bat` and `.cmd` targets on Windows, arguments with `cmd.exe` metacharacters are refused. Emulator ids are checked before `--launch`, and `select-device --device` must name a connected device.
+- DevTools addresses are opened only if they point to `127.0.0.1`, `localhost` or `::1` (`isSafeBrowserUrl`).
+- The extension downloads only from `github.com/sawongam/zed-flutter-run`, declared in the `download_file` capability of `extension.toml`, and only runs a file whose SHA-256 matches the pin.
+- A log file name must end in `.log`, its folder must exist, the file is created owner-only on POSIX, and control characters in logged text are escaped. Logs can hold DAP traffic, so they are written only on request.
+- `flutterSdkPath`, `.fvm/flutter_sdk` and `env` choose what runs, as Zed tasks do. Open only projects you trust.

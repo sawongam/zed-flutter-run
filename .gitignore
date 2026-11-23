@@ -6,6 +6,8 @@ pubspec_overrides.yaml
 *.log
 # Rust
 target/
+# Built by Zed's "install dev extension"
+extension/extension.wasm
 # Editors / OS
 .idea/
 .DS_Store

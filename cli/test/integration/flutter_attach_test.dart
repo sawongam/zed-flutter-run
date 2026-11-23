@@ -16,7 +16,7 @@ import 'support/temp_project.dart';
 import 'support/wait.dart';
 
 /// `http://H:P/TOKEN=/` form of the VM service address from `app.debugPort`
-/// (the form the README tells users to copy; docs/research/attach-probe.md).
+/// (the form the README tells users to copy).
 String _httpForm(String wsUri) {
   final u = Uri.parse(wsUri);
   final path = u.path.endsWith('/ws')
@@ -135,9 +135,9 @@ void main() {
       final adapter = await h.adapterPid();
       expect(adapter, isNotNull);
       final adapterLine = (await commandLines([adapter!])).values.single;
-      final adapterTree = (await commandLines(
-        await descendantsOf(h.pid),
-      )).values.join('\n');
+      final adapterTree = (await commandLines(await descendantsOf(h.pid)))
+          .values
+          .join('\n');
       expect('$adapterLine\n$adapterTree', contains('--no-dds'));
 
       final session = h.ownSession()!;

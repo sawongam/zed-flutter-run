@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter_run/src/common/clock.dart';
 import 'package:flutter_run/src/common/logger.dart';
 import 'package:test/test.dart';
 
@@ -12,12 +13,21 @@ class _LineSink implements IOSink {
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
+class _FixedClock extends SystemClock {
+  const _FixedClock(this.fixed);
+
+  final DateTime fixed;
+
+  @override
+  DateTime now() => fixed;
+}
+
 void main() {
   final fixed = DateTime(2026, 11, 3, 9, 8, 7, 6);
 
   test('level filtering on stderr', () {
     final sink = _LineSink();
-    Logger(level: LogLevel.warn, stderrSink: sink, clock: () => fixed)
+    Logger(level: LogLevel.warn, stderrSink: sink, clock: _FixedClock(fixed))
       ..error('e')
       ..warn('w')
       ..info('i')
@@ -49,7 +59,7 @@ void main() {
         final logger = Logger(
           stderrSink: sink,
           logFilePath: file,
-          clock: () => fixed,
+          clock: _FixedClock(fixed),
         );
         logger
           ..info('hello')
@@ -118,19 +128,7 @@ void main() {
     expect(sink.buffer.toString().trimRight().split('\n').length, 1);
   });
 
-  test('capturing and silent loggers', () {
-    final lines = <String>[];
-    Logger.capturing(lines, level: LogLevel.debug)
-      ..debug('a')
-      ..trace('b')
-      ..dap('SYN', 'x');
-    expect(lines.length, 1);
-    expect(lines.single, endsWith('DEBUG a'));
-    final all = <String>[];
-    Logger.capturing(all)
-      ..trace('b')
-      ..dap('INJ', {'k': 1});
-    expect(all.length, 2);
+  test('the silent logger ignores everything', () {
     Logger.silent()
       ..error('x')
       ..info('y')

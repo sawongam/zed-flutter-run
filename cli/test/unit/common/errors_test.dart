@@ -23,24 +23,21 @@ void main() {
       const UsageError('x'): 2,
       const NoSessionException('x'): 3,
       const SessionRequestException('x'): 4,
-      const RequestTimeoutException('x'): 5,
       const SdkNotFoundException('x'): 6,
       const DeviceException('x'): 7,
       const ProjectNotFoundException('x'): 8,
-      const ManualActionRequired('x'): 9,
       const ExternalToolException('x'): 10,
     };
     cases.forEach((e, code) => expect(e.exitCode, code, reason: '$e'));
   });
 
-  test('message, hint, cause and tried are kept', () {
+  test('message, hint and cause are kept', () {
     const cause = FormatException('bad');
     const e = ExternalToolException('failed', hint: 'Try again.', cause: cause);
     expect(e.toString(), 'failed');
     expect(e.hint, 'Try again.');
     expect(e.cause, cause);
-    const s = SdkNotFoundException('none', tried: ['a', 'b']);
-    expect(s.tried, ['a', 'b']);
+    const s = SdkNotFoundException('none');
     expect(s, isA<FlutterRunException>());
   });
 }

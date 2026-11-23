@@ -17,7 +17,7 @@ abstract interface class Console {
 }
 
 class SystemConsole implements Console {
-  SystemConsole({bool? color}) : _color = color;
+  SystemConsole({this._color});
 
   final bool? _color;
 
@@ -44,9 +44,8 @@ class SystemConsole implements Console {
 
 /// In-memory console for tests.
 class MemoryConsole implements Console {
-  MemoryConsole({List<String> input = const [], bool interactive = false})
-    : _input = Queue<String>.of(input),
-      _interactive = interactive;
+  MemoryConsole({List<String> input = const [], this._interactive = false})
+    : _input = Queue<String>.of(input);
 
   final Queue<String> _input;
   final bool _interactive;

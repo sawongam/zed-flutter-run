@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
+import 'package:flutter_run/src/common/clock.dart';
 import 'package:flutter_run/src/dap/channel.dart';
 import 'package:flutter_run/src/dap/messages.dart';
 
@@ -117,4 +119,34 @@ class FakeAdapter implements AdapterConnection {
     if (!fakeChannel.incoming.isClosed) fakeChannel.incoming.close();
     if (!exit.isCompleted) exit.complete(code);
   }
+}
+
+/// A [Clock] driven by a [FakeAsync]: timers fire when the test elapses time,
+/// and [now] follows the fake time.
+class FakeClock implements Clock {
+  FakeClock(this._async);
+
+  final FakeAsync _async;
+  final DateTime start = DateTime.utc(2026);
+
+  @override
+  DateTime now() => _async.getClock(start).now();
+
+  @override
+  Timer timer(Duration d, void Function() cb) =>
+      _async.run((_) => Timer(d, cb));
+
+  @override
+  Timer periodic(Duration d, void Function(Timer) cb) =>
+      _async.run((_) => Timer.periodic(d, cb));
+
+  @override
+  Future<void> delay(Duration d) {
+    final c = Completer<void>();
+    timer(d, c.complete);
+    return c.future;
+  }
+
+  @override
+  Stopwatch stopwatch() => _async.getClock(start).stopwatch();
 }

@@ -1,0 +1,54 @@
+# Optional pub.dev publish via automated publishing (OIDC, no stored secret):
+# https://dart.dev/tools/pub/automated-publishing
+#
+# One-time setup by the maintainer (pub.dev package > Admin > Automated publishing):
+#   - enable publishing from GitHub Actions for sawongam/zed-flutter-run
+#   - tag pattern: v{{version}}
+#   - require GitHub environment: pub.dev
+# And in GitHub: create the `pub.dev` environment with required reviewers.
+# The job below pauses for that approval, so nothing is published unattended.
+name: Publish to pub.dev
+
+# Run it by hand from the release tag (Run workflow > pick the tag vX.Y.Z). It is
+# not automatic because tags created by the release workflow do not start other workflows.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pub-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: pub.dev (needs approval)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pub.dev
+    permissions:
+      contents: read
+      id-token: write   # OIDC token pub.dev verifies
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: stable
+      - name: Run from a tag that matches the version in all files
+        working-directory: .
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          sh .github/scripts/check-versions.sh
+          ver=$(sed -n 's/^version:[[:space:]]*\([0-9][^[:space:]#]*\).*/\1/p' cli/pubspec.yaml | head -n 1)
+          [ "$TAG" = "v$ver" ] || { echo "::error::tag $TAG != pubspec version v$ver"; exit 1; }
+      - run: dart pub get --enforce-lockfile
+      - run: dart pub publish --dry-run
+      - name: Publish
+        run: dart pub publish --force

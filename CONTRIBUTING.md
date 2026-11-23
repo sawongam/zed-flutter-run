@@ -1,77 +1,84 @@
 # Contributing
 
-Thanks for helping. By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately, see [SECURITY.md](SECURITY.md).
+Bug reports, fixes and features are welcome. For anything larger than a small fix, open an issue first so we can agree on the approach before you write the code.
 
-## Repository layout
+By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately, as described in [SECURITY.md](SECURITY.md).
 
-| Path | What |
+## Layout
+
+| Path | Contents |
 |---|---|
-| `cli/` | The Dart package `flutter_run` (CLI and DAP proxy). `bin/` entry point, `lib/src/<module>/` modules, `test/unit/`, `test/integration/` |
-| `cli/lib/src/` | `common`, `dap`, `control`, `sdk`, `devices`, `watch`, `devtools`, `init`, `cli` |
-| `extension/` | The Rust Zed extension (`flutter-run-debugger`): `src/`, `extension.toml`, `debug_adapter_schemas/FlutterRun.json` |
-| `fixtures/` | Sample projects used by tests (do not edit; tests copy them) |
-| `docs/` | Project memory: plan, decisions, research, reviews, conversation logs |
-| `spike/` | Historical, not built, never edited |
-| `.github/` | CI and release workflows |
+| `cli/` | The Dart package `flutter_run`: the command-line tool and the debug adapter proxy |
+| `extension/` | The Rust Zed extension `flutter-run-debugger` |
+| `fixtures/` | Sample projects the integration tests copy and run |
+| `docs/` | User and developer documentation |
 
-## Prerequisites
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the parts fit together and [docs/DESIGN.md](docs/DESIGN.md) for why. [docs/EXTENDING.md](docs/EXTENDING.md) has step-by-step recipes for adding a command, a `debug.json` key or a locator pattern.
 
-- Dart SDK 3.8 or newer (it comes with Flutter).
-- Flutter SDK for the `integration` suite (it uses `flutter-tester`, no device needed).
-- Rust (via rustup) with the `wasm32-wasip2` target for the extension.
-- Zed, for manual testing (`zed: install dev extension`).
+## Set up
 
-## Running checks
+You need:
 
-CLI, from `cli/`:
+- Flutter 3.47 or newer (Dart 3.13 or newer)
+- Rust through [rustup](https://rustup.rs), with the `wasm32-wasip2` target
+- Zed, to try your change for real
+
+```sh
+sh tool/bootstrap.sh
+```
+
+The script checks for the tools above, adds the wasm target and fetches dependencies. It is safe to run again.
+
+## Build and test
+
+The CLI, from `cli/`:
 
 ```sh
 dart pub get
 dart format --output=none --set-exit-if-changed .
 dart analyze --fatal-infos
-dart test --exclude-tags integration --exclude-tags integration-dart   # unit tests
-dart test -t integration-dart -j 1    # Dart debug adapter, no Flutter needed
-dart test -t integration -j 1         # needs a Flutter SDK; uses flutter-tester
+dart test test/unit
+dart test -t integration-dart -j 1    # drives the real Dart debug adapter
+dart test -t integration -j 1         # drives the real Flutter debug adapter on the headless flutter-tester device
 ```
 
-Extension, from `extension/`:
+The extension, from `extension/`:
 
 ```sh
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-rustup target add wasm32-wasip2
 cargo clippy --target wasm32-wasip2 -- -D warnings
 cargo build --release --target wasm32-wasip2
 ```
 
+CI runs all of these on Linux, macOS and Windows, plus `.github/scripts/check-versions.sh`, which checks that the version numbers in the two packages agree.
+
+To try a change in Zed, compile the CLI onto your `PATH` and install the extension as a dev extension:
+
+```sh
+cd cli && dart compile exe bin/flutter_run.dart -o ~/.local/bin/flutter_run
+```
+
+Then run `zed: install dev extension` in Zed and choose the `extension/` folder. [docs/TESTING_IN_ZED.md](docs/TESTING_IN_ZED.md) is a checklist of what to try.
+
 ## Code rules
 
-(from [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) section 3)
+1. **Module boundaries.** A module under `cli/lib/src/<module>/` imports only `package:*`, `dart:*`, `common/` and its own files. Modules are wired together in `cli/lib/src/cli/` and nowhere else. A test enforces this.
+2. **The proxy's standard output belongs to the debug protocol.** Nothing else may write to it. Do not use `print` in `lib/`; use `Console` for command output and `Logger` for diagnostics.
+3. **Pass collaborators in.** Classes that touch the clock, processes, signals or the environment take them as constructor arguments, so tests can replace them. Use the injected `Clock` for timers.
+4. **Never start a process through a shell string.**
+5. **Messages are whole sentences that say what to do next.** Notices in the debug console start with `[flutter_run]`.
+6. **Commands return an exit code from `ExitCodes`** and throw a `FlutterRunException` subclass for expected failures.
 
-1. **Module boundaries:** a module under `lib/src/<module>/` may import `package:*`, `dart:*`, `lib/src/common/**` and files of its own module only. Modules are wired together in `lib/src/cli/` (composition root).
-2. **No `print` in `lib/`.** Output goes through `Console` (CLI results) or `Logger` (diagnostics). **Nothing may write to stdout in the proxy** except the DAP channel.
-3. **Message style:** whole sentences that say what to do next; placeholders only through function parameters (no fragment concatenation, no pluralising by appending `s`); no hard-coded shortcut names except in `init`/README text about Zed's defaults; ASCII `...`; no exit-code names or jargon in text. Console notices start with `[flutter_run]`; warnings and errors carry `Warning:` / `Error:`. Keep text next to the code that uses it.
-4. **Testability:** I/O classes take their collaborators (`HostEnvironment`, `Console`, `Logger`, process runners) as constructor arguments. Use `Timer` / `Future.delayed` for time so `fake_async` works.
-5. Every `Command<int>` returns an exit code from `ExitCodes` and throws `FlutterRunException` subclasses for expected failures.
-6. `dart format`, `dart analyze --fatal-infos` clean, LF line endings.
-7. Never start processes through a shell string.
+## Pull requests
 
-## Docs are the project memory
+- Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `ci:`, `chore:`). Versions and release notes are generated from them.
+- Add or update tests for what you changed. Run the integration suites if you touched the proxy, the control channel, the file watcher or SDK discovery.
+- If you change a `debug.json` key, update `extension/debug_adapter_schemas/FlutterRun.json`, the `init` templates and [docs/CONFIGURATION.md](docs/CONFIGURATION.md) together.
+- If you change a command, flag, message or exit code, update [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+- No telemetry and no new network access.
 
-Read [docs/README.md](docs/README.md) before you start. After a milestone or a useful discussion:
+## Testing on your setup
 
-- add a log to `docs/conversations/`;
-- record decisions as ADRs in `docs/decisions/`;
-- keep `docs/research/` correct (add a correction note rather than silently rewriting history);
-- update the index in `docs/README.md`.
-
-## Pull request checklist
-
-- [ ] Format, analyze and unit tests pass; integration tests pass if you touched the proxy, control channel, watcher or SDK code.
-- [ ] `cargo fmt`, `clippy` and `cargo test` pass if you touched `extension/`.
-- [ ] If you changed a debug.json key, update `FlutterRun.json`, `init` templates, README and the schema test together.
-- [ ] If you added or changed a command, flag, message or exit code, update the README and CHANGELOG (`## [Unreleased]`).
-- [ ] No stdout writes in the proxy; no new `print`.
-- [ ] Docs updated (conversation log, ADR if you decided something, research notes if facts changed).
-- [ ] No secrets, no telemetry, no network calls beyond what SECURITY.md describes.
+The project needs reports from real devices and operating systems more than anything else. If you run it on Android, iOS, the web, macOS or Windows, open an issue with the output of `flutter_run doctor` and what worked or did not.

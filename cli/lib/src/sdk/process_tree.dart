@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import '../common/clock.dart';
 import '../common/host_environment.dart';
 
 /// One row of the process table.
@@ -38,6 +39,7 @@ class ProcessTable {
 
   final Map<int, ProcessInfo> byPid;
 
+  /// Parent pid -> child pids.
   Map<int, List<int>> get childrenOf {
     final map = <int, List<int>>{};
     for (final r in byPid.values) {
@@ -50,21 +52,6 @@ class ProcessTable {
     }
     return map;
   }
-}
-
-/// Parses `pid ppid ...` lines (extra columns ignored) into a parent -> children
-/// map. Malformed lines are skipped.
-Map<int, List<int>> parsePsOutput(String psOutput) {
-  final map = <int, List<int>>{};
-  for (final line in psOutput.split('\n')) {
-    final parts = line.trim().split(RegExp(r'\s+'));
-    if (parts.length < 2) continue;
-    final pid = int.tryParse(parts[0]);
-    final ppid = int.tryParse(parts[1]);
-    if (pid == null || ppid == null) continue;
-    (map[ppid] ??= <int>[]).add(pid);
-  }
-  return map;
 }
 
 /// Parses `pid ppid stat start...` lines (the format [readProcessTable] asks
@@ -215,9 +202,9 @@ const List<String> windowsPowerShellArgs = [
   '-NoProfile',
   '-NonInteractive',
   '-Command',
-  'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,'
+  ('Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,'
       "@{n='Created';e={\$_.CreationDate.ToFileTimeUtc()}},CommandLine | "
-      'ConvertTo-Csv -NoTypeInformation',
+      'ConvertTo-Csv -NoTypeInformation'),
 ];
 const List<String> windowsWmicArgs = [
   'process',
@@ -226,13 +213,13 @@ const List<String> windowsWmicArgs = [
   '/format:csv',
 ];
 
-Future<ProcessTable> _readWindowsTable() async {
+Future<ProcessTable> _readWindowsTable(ProcessResultRunner run) async {
   for (final attempt in [
     ('powershell', windowsPowerShellArgs),
     ('wmic', windowsWmicArgs),
   ]) {
     try {
-      final result = await Process.run(attempt.$1, attempt.$2);
+      final result = await run(attempt.$1, attempt.$2);
       if (result.exitCode != 0) continue;
       final table = parseWindowsProcessCsv(result.stdout as String);
       if (table.byPid.isNotEmpty) return table;
@@ -245,10 +232,13 @@ Future<ProcessTable> _readWindowsTable() async {
 
 /// Reads the process table: `ps -A -o pid=,ppid=,stat=,lstart=` (with a
 /// `/proc` fallback on Linux) on POSIX, PowerShell/wmic CSV on Windows.
-Future<ProcessTable> readProcessTable(HostEnvironment env) async {
-  if (env.isWindows) return _readWindowsTable();
+Future<ProcessTable> readProcessTable(
+  HostEnvironment env, {
+  ProcessResultRunner runProcess = Process.run,
+}) async {
+  if (env.isWindows) return _readWindowsTable(runProcess);
   try {
-    final result = await Process.run(
+    final result = await runProcess(
       'ps',
       const ['-A', '-o', 'pid=,ppid=,stat=,lstart='],
       environment: const {'LC_ALL': 'C', 'LANG': 'C'},
@@ -301,19 +291,20 @@ ProcessTable _readProc() {
 /// Command lines of [pids] (POSIX; empty map when they cannot be read).
 Future<Map<int, String>> readCommandLines(
   Iterable<int> pids,
-  HostEnvironment env,
-) async {
+  HostEnvironment env, {
+  ProcessResultRunner runProcess = Process.run,
+}) async {
   final wanted = pids.toSet();
   if (wanted.isEmpty) return const <int, String>{};
   if (env.isWindows) {
-    final table = await readProcessTable(env);
+    final table = await readProcessTable(env, runProcess: runProcess);
     return {
       for (final pid in wanted)
         if (table.byPid[pid]?.command != null) pid: table.byPid[pid]!.command!,
     };
   }
   try {
-    final result = await Process.run(
+    final result = await runProcess(
       'ps',
       ['-o', 'pid=,command=', '-p', wanted.join(',')],
       environment: const {'LC_ALL': 'C', 'LANG': 'C'},
@@ -352,8 +343,13 @@ bool isSharedDaemonCommand(String command) => _sharedDaemon.hasMatch(command);
 
 typedef ProcessTableReader = Future<ProcessTable> Function();
 typedef SignalSender = bool Function(int pid, ProcessSignal signal);
-typedef ProcessRunner =
-    Future<ProcessResult> Function(String executable, List<String> arguments);
+
+/// Runs a fixed command to completion (`Process.run` in production).
+typedef ProcessResultRunner = Future<ProcessResult> Function(
+  String executable,
+  List<String> arguments, {
+  Map<String, String>? environment,
+});
 
 /// Terminates [rootPid] and [snapshot] (pids that were its descendants).
 ///
@@ -372,13 +368,13 @@ Future<void> killTree(
   Map<int, String> startTimes = const <int, String>{},
   ProcessTableReader? readTable,
   SignalSender? sendSignal,
-  ProcessRunner? runProcess,
+  ProcessResultRunner runProcess = Process.run,
+  Clock clock = const SystemClock(),
 }) async {
-  final read = readTable ?? () => readProcessTable(env);
-  final send = sendSignal ?? ((pid, signal) => Process.killPid(pid, signal));
+  final read = readTable ?? () => readProcessTable(env, runProcess: runProcess);
+  final SignalSender send = sendSignal ?? Process.killPid;
 
-  Future<Set<int>> eligible() async {
-    final table = await read();
+  Set<int> eligibleIn(ProcessTable table) {
     final descendants = rootPid <= 1
         ? <int>{}
         : collectDescendants(table.childrenOf, rootPid);
@@ -400,11 +396,12 @@ Future<void> killTree(
     return out;
   }
 
+  Future<Set<int>> eligible() async => eligibleIn(await read());
+
   if (env.isWindows) {
-    final run = runProcess ?? ((e, a) => Process.run(e, a));
     Future<void> taskkill(int pid, {required bool tree}) async {
       try {
-        await run('taskkill', ['/PID', '$pid', if (tree) '/T', '/F']);
+        await runProcess('taskkill', ['/PID', '$pid', if (tree) '/T', '/F']);
       } on ProcessException {
         // taskkill missing or the process is gone.
       }
@@ -413,8 +410,9 @@ Future<void> killTree(
     // With a readable process table only provably-ours pids are killed
     // (PID-reuse guard by creation date). /T is used for the root while it is
     // alive, so its tree goes with it.
-    final first = await eligible();
-    if (first.isEmpty && (await read()).byPid.isEmpty) {
+    final table = await read();
+    final first = eligibleIn(table);
+    if (first.isEmpty && table.byPid.isEmpty) {
       // No table (PowerShell and wmic unavailable): best effort by pid.
       for (final pid in <int>{rootPid, ...snapshot}) {
         if (pid > 4) await taskkill(pid, tree: true);
@@ -426,7 +424,7 @@ Future<void> killTree(
       for (final pid in round) {
         if (pid > 4) await taskkill(pid, tree: pid == rootPid);
       }
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await clock.delay(const Duration(milliseconds: 100));
       round = await eligible();
     }
     return;
@@ -438,19 +436,19 @@ Future<void> killTree(
     send(pid, ProcessSignal.sigterm);
   }
 
-  final deadline = DateTime.now().add(grace);
+  final deadline = clock.now().add(grace);
   while (true) {
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await clock.delay(const Duration(milliseconds: 50));
     alive = await eligible();
     if (alive.isEmpty) return;
-    if (!DateTime.now().isBefore(deadline)) break;
+    if (!clock.now().isBefore(deadline)) break;
   }
   for (final pid in alive) {
     send(pid, ProcessSignal.sigkill);
   }
   // Give the kernel a moment so callers observe the processes gone.
   for (var i = 0; i < 20; i++) {
-    await Future<void>.delayed(const Duration(milliseconds: 25));
+    await clock.delay(const Duration(milliseconds: 25));
     if ((await eligible()).isEmpty) return;
   }
 }

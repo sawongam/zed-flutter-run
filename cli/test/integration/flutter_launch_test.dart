@@ -35,125 +35,122 @@ void main() {
   Future<CliRun> cli(List<String> args, {int? expectExit}) =>
       runCli(exe, args, stateDir: ws.stateDir, expectExit: expectExit);
 
-  test(
-    'launch, breakpoint, status, reload, restart, DevTools, then no orphans',
-    () async {
-      final s = await FlutterLaunch.start(ws, launchArgs: noSave);
-      final c = s.client;
-      final h = s.harness;
+  test('launch, breakpoint, status, reload, restart, DevTools, then no orphans', () async {
+    final s = await FlutterLaunch.start(ws, launchArgs: noSave);
+    final c = s.client;
+    final h = s.harness;
 
-      expect(c.outputs.join(), contains('GREETING: Hello v1'));
-      final session = h.ownSession()!;
-      expect(session['kind'], 'flutter');
-      expect(session['request'], 'launch');
-      expect(session['appStarted'], isTrue);
-      expect(session['mode'], 'debug');
-      expect(session['deviceId'], 'flutter-tester');
-      expect(
-        session['vmServiceUri'],
-        matches(RegExp(r'^ws://127\.0\.0\.1:\d+/')),
-      );
+    expect(c.outputs.join(), contains('GREETING: Hello v1'));
+    final session = h.ownSession()!;
+    expect(session['kind'], 'flutter');
+    expect(session['request'], 'launch');
+    expect(session['appStarted'], isTrue);
+    expect(session['mode'], 'debug');
+    expect(session['deviceId'], 'flutter-tester');
+    expect(
+      session['vmServiceUri'],
+      matches(RegExp(r'^ws://127\.0\.0\.1:\d+/')),
+    );
 
-      // The extension-built command line prints the start notices once.
-      expect(
-        c.countOutputs('flutter_run command is not on your PATH'),
-        lessThanOrEqualTo(1),
-      );
-      expect(c.countOutputs('Reload on save is on for'), 0);
+    // The extension-built command line prints the start notices once.
+    expect(
+      c.countOutputs('flutter_run command is not on your PATH'),
+      lessThanOrEqualTo(1),
+    );
+    expect(c.countOutputs('Reload on save is on for'), 0);
 
-      // status --json lists the live session.
-      final status = await cli([
-        'status',
-        '--json',
-        '--project',
-        s.app.path,
-      ], expectExit: 0);
-      final listed = (jsonDecode(status.stdout) as Map)['sessions'] as List;
-      final mine = listed.cast<Map<String, Object?>>().singleWhere(
-        (e) => e['pid'] == h.pid,
-      );
-      expect(mine['matches'], isTrue);
-      expect(mine['appStarted'], isTrue);
+    // status --json lists the live session.
+    final status = await cli([
+      'status',
+      '--json',
+      '--project',
+      s.app.path,
+    ], expectExit: 0);
+    final listed = (jsonDecode(status.stdout) as Map)['sessions'] as List;
+    final mine = listed.cast<Map<String, Object?>>().singleWhere(
+      (e) => e['pid'] == h.pid,
+    );
+    expect(mine['matches'], isTrue);
+    expect(mine['appStarted'], isTrue);
 
-      // Hot reload through the CLI: new string, breakpoint hit again.
-      final resume = AutoResume(c);
-      setGreeting(s.mainFile, 'v2');
-      var mark = c.outputMark;
-      final reload = await cli([
-        'reload',
-        '--project',
-        s.app.path,
-      ], expectExit: 0);
-      expect(
-        reload.stdout,
-        matches(RegExp(r'Hot reload: flutter-tester \S+ ok in [\d.]+ s')),
-      );
-      await c.waitForOutput('Reloaded', from: mark);
-      await c.waitForOutput('GREETING: Hello v2', from: mark);
-      expect(resume.stops, isNotEmpty, reason: 'reassemble() hits bump()');
-      expect(resume.stops.last, endsWith('lib/main.dart:${s.bpLine}'));
-      final stopsAfterReload = resume.stops.length;
+    // Hot reload through the CLI: new string, breakpoint hit again.
+    final resume = AutoResume(c);
+    setGreeting(s.mainFile, 'v2');
+    var mark = c.outputMark;
+    final reload = await cli([
+      'reload',
+      '--project',
+      s.app.path,
+    ], expectExit: 0);
+    expect(
+      reload.stdout,
+      matches(RegExp(r'Hot reload: flutter-tester \S+ ok in [\d.]+ s')),
+    );
+    await c.waitForOutput('Reloaded', from: mark);
+    await c.waitForOutput('GREETING: Hello v2', from: mark);
+    expect(resume.stops, isNotEmpty, reason: 'reassemble() hits bump()');
+    expect(resume.stops.last, endsWith('lib/main.dart:${s.bpLine}'));
+    final stopsAfterReload = resume.stops.length;
 
-      // Hot restart: main() runs again and the breakpoint is hit again.
-      mark = c.outputMark;
-      final restart = await cli([
-        'restart',
-        '--project',
-        s.app.path,
-      ], expectExit: 0);
-      expect(
-        restart.stdout,
-        matches(RegExp(r'Hot restart: flutter-tester \S+ ok in')),
-      );
-      await c.waitForOutput('Restarted application', from: mark);
-      await c.waitForOutput('GREETING: Hello v2', from: mark);
-      await c.waitForOutput('BUMP: 2', from: mark);
-      expect(resume.stops.length, greaterThan(stopsAfterReload));
-      await resume.stop();
+    // Hot restart: main() runs again and the breakpoint is hit again.
+    mark = c.outputMark;
+    final restart = await cli([
+      'restart',
+      '--project',
+      s.app.path,
+    ], expectExit: 0);
+    expect(
+      restart.stdout,
+      matches(RegExp(r'Hot restart: flutter-tester \S+ ok in')),
+    );
+    await c.waitForOutput('Restarted application', from: mark);
+    await c.waitForOutput('GREETING: Hello v2', from: mark);
+    await c.waitForOutput('BUMP: 2', from: mark);
+    expect(resume.stops.length, greaterThan(stopsAfterReload));
+    await resume.stop();
 
-      // The proxy's own requests never leak to the client.
-      expect(h.injected('hotReload', reason: 'manual'), hasLength(1));
-      expect(h.injected('hotRestart', reason: 'manual'), hasLength(1));
-      expect(
-        c.responses.keys.where((k) => k >= syntheticSeqBase),
-        isEmpty,
-        reason: 'responses to injected requests must be swallowed',
-      );
+    // The proxy's own requests never leak to the client.
+    expect(h.injected('hotReload', reason: 'manual'), hasLength(1));
+    expect(h.injected('hotRestart', reason: 'manual'), hasLength(1));
+    expect(
+      c.responses.keys.where((k) => k >= syntheticSeqBase),
+      isEmpty,
+      reason: 'responses to injected requests must be swallowed',
+    );
 
-      // DevTools URL from the CLI answers over HTTP.
-      final dev = await cli([
-        'devtools',
-        '--print',
-        '--project',
-        s.app.path,
-      ], expectExit: 0);
-      final url = dev.stdout.trim();
-      expect(
-        url,
-        matches(
-          RegExp(
-            r'^http://127\.0\.0\.1:\d+/[^/]+/devtools/inspector\?uri=ws%3A%2F%2F',
-          ),
+    // DevTools URL from the CLI answers over HTTP.
+    final dev = await cli([
+      'devtools',
+      '--print',
+      '--project',
+      s.app.path,
+    ], expectExit: 0);
+    final url = dev.stdout.trim();
+    expect(
+      url,
+      matches(
+        RegExp(
+          r'^http://127\.0\.0\.1:\d+/[^/]+/devtools/inspector\?uri=ws%3A%2F%2F',
         ),
-      );
-      final http = HttpClient()..findProxy = (_) => 'DIRECT';
-      try {
-        final response = await (await http.getUrl(Uri.parse(url))).close();
-        final body = await utf8.decodeStream(response);
-        expect(response.statusCode, 200);
-        expect(body, contains('flutter_bootstrap.js'));
-      } finally {
-        http.close(force: true);
-      }
+      ),
+    );
+    final http = HttpClient()..findProxy = (_) => 'DIRECT';
+    try {
+      final response = await (await http.getUrl(Uri.parse(url))).close();
+      final body = await utf8.decodeStream(response);
+      expect(response.statusCode, 200);
+      expect(body, contains('flutter_bootstrap.js'));
+    } finally {
+      http.close(force: true);
+    }
 
-      // Stop like Zed: terminate, kill the proxy; nothing may survive.
-      final tree = await h.trackTree();
-      final lines = (await commandLines(tree)).values.join('\n');
-      printOnFailure('process tree before stop:\n$lines');
-      expect(lines, contains('flutter_tester'));
-      await h.zedStop();
-    },
-  );
+    // Stop like Zed: terminate, kill the proxy; nothing may survive.
+    final tree = await h.trackTree();
+    final lines = (await commandLines(tree)).values.join('\n');
+    printOnFailure('process tree before stop:\n$lines');
+    expect(lines, contains('flutter_tester'));
+    await h.zedStop();
+  });
 
   test('deviceId in the launch entry is injected as -d', () async {
     final s = await FlutterLaunch.start(
@@ -223,11 +220,8 @@ void main() {
     ], expectExit: 4);
     expect(restart.combined, contains('still starting'));
     final s = await launch.finishStartup();
-    final after = await cli([
-      'reload',
-      '--project',
-      s.app.path,
-    ]).then((r) => r.stdout);
+    final after = await cli(['reload', '--project', s.app.path])
+        .then((r) => r.stdout);
     expect(after, isNotEmpty);
     await s.harness.zedStop();
   });
@@ -259,9 +253,8 @@ void main() {
         '--project',
         parent.path,
       ], expectExit: 0);
-      final okLines = RegExp(
-        r'Hot reload: flutter-tester \S+ ok in',
-      ).allMatches(result.stdout);
+      final okLines = RegExp(r'Hot reload: flutter-tester \S+ ok in')
+          .allMatches(result.stdout);
       expect(okLines, hasLength(2), reason: result.describe());
       expect(result.stdout, contains('app_one'));
       expect(result.stdout, contains('app_two'));

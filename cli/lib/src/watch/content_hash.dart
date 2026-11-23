@@ -1,23 +1,24 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
-/// Remembers the SHA-256 of each file's last seen content. There is no
-/// baseline scan (ADR 0006): the first event for a file counts as a change.
+/// Remembers the SHA-256 of each file's last seen content. Memory is bounded:
+/// the least recently used entries are dropped beyond [maxEntries].
 class ContentHashTracker {
   ContentHashTracker({
     Future<List<int>?> Function(String path)? readFile,
-    int maxBytes = 2 * 1024 * 1024,
-    int maxEntries = 5000,
-  }) : _maxBytes = maxBytes,
-       _maxEntries = maxEntries {
+    this._maxBytes = 2 * 1024 * 1024,
+    this.maxEntries = 5000,
+  }) : _customReader = readFile != null {
     _readFile = readFile ?? _readLimited;
   }
 
   final int _maxBytes;
-  final int _maxEntries;
+  final bool _customReader;
+  final int maxEntries;
   late final Future<List<int>?> Function(String path) _readFile;
   final Map<String, String> _hashes = {};
 
@@ -52,6 +53,25 @@ class ContentHashTracker {
     return previous != current;
   }
 
+  /// Records the current content of [files] (path to key, as for
+  /// [hasChanged]) as seen. With the default reader the files are read and
+  /// hashed on a background isolate: a large `lib/` takes hundreds of
+  /// milliseconds of CPU, which would otherwise hold up the DAP traffic.
+  Future<void> seed(Map<String, String> files) async {
+    if (_customReader) {
+      for (final MapEntry(key: path, value: key) in files.entries) {
+        await hasChanged(path, key: key);
+      }
+      return;
+    }
+    final paths = files.keys.toList();
+    final maxBytes = _maxBytes;
+    final hashes = await Isolate.run(() => _hashAll(paths, maxBytes));
+    for (var i = 0; i < paths.length; i++) {
+      _store(files[paths[i]]!, hashes[i]);
+    }
+  }
+
   /// SHA-256 of the current content without storing it; null when the file
   /// is missing, unreadable or larger than the limit (unknown).
   Future<String?> digest(String path) async {
@@ -71,7 +91,7 @@ class ContentHashTracker {
   void _store(String key, String value) {
     _hashes.remove(key); // keep insertion order = recency
     _hashes[key] = value;
-    while (_hashes.length > _maxEntries) {
+    while (_hashes.length > maxEntries) {
       _hashes.remove(_hashes.keys.first);
     }
   }
@@ -87,5 +107,25 @@ class ContentHashTracker {
     } on FileSystemException {
       return null;
     }
+  }
+}
+
+/// What [ContentHashTracker.hasChanged] would store for each of [paths].
+/// Runs on a background isolate, so it reads synchronously.
+List<String> _hashAll(List<String> paths, int maxBytes) => [
+  for (final path in paths) _hashFile(path, maxBytes),
+];
+
+String _hashFile(String path, int maxBytes) {
+  RandomAccessFile? file;
+  try {
+    file = File(path).openSync();
+    final bytes = file.readSync(maxBytes + 1);
+    if (bytes.length > maxBytes) return ContentHashTracker._tooBig;
+    return sha256.convert(bytes).toString();
+  } on FileSystemException {
+    return ContentHashTracker._deleted;
+  } finally {
+    file?.closeSync();
   }
 }

@@ -42,8 +42,7 @@ ProjectInfo detectProject(String projectDir, HostEnvironment env) {
   if (root == null) {
     throw ProjectNotFoundException(
       'No pubspec.yaml was found at or above $start.',
-      hint:
-          'Run this command inside a Flutter or Dart project, or pass --project with the project folder.',
+      hint: 'Run this command inside a Flutter or Dart project, or pass --project with the project folder.',
     );
   }
 

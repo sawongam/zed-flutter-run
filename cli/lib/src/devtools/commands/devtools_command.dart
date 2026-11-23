@@ -7,40 +7,15 @@ import '../../common/host_environment.dart';
 import '../browser_opener.dart';
 import '../pages.dart';
 import '../url_builder.dart';
-
-/// The running app a DevTools page is opened for.
-class VmServiceTarget {
-  const VmServiceTarget({
-    required this.vmServiceUri,
-    this.deviceId,
-    required this.sessionPid,
-    this.kind,
-  });
-
-  final String vmServiceUri;
-  final String? deviceId;
-  final int sessionPid;
-
-  /// Session kind (`flutter` or `dart`); null when unknown.
-  final String? kind;
-}
-
-/// Finds the session for [directory] (most recent `startedAt` with a
-/// `vmServiceUri`). Throws [NoSessionException] (exit 3) or
-/// [SessionRequestException] (exit 4, app still starting).
-typedef VmServiceTargetResolver =
-    Future<VmServiceTarget> Function({required String directory});
+import '../vm_service_target_resolver.dart';
 
 class DevToolsCommand extends Command<int> {
   DevToolsCommand({
-    required VmServiceTargetResolver resolveTarget,
-    required BrowserOpener opener,
-    required HostEnvironment env,
-    required Console console,
-  }) : _resolveTarget = resolveTarget,
-       _opener = opener,
-       _env = env,
-       _console = console {
+    required this._resolveTarget,
+    required this._opener,
+    required this._env,
+    required this._console,
+  }) {
     GlobalOptions.addTo(argParser);
     argParser.addFlag(
       'print',

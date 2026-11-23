@@ -38,8 +38,8 @@ Future<String> exeOrFail() => ensureFlutterRunExe();
 ///
 /// Mirrors a Zed session: `initialize`, un-awaited `launch`, `initialized`,
 /// `setBreakpoints`, `configurationDone`, breakpoint stop in `main()`, then
-/// `continue`. Pass [holdConfigurationDone] to stop right after
-/// `setBreakpoints` and finish later with [FlutterSession.finishStartup].
+/// `continue`. Pass `holdConfigurationDone` to stop right after
+/// `setBreakpoints` and finish later with `FlutterSession.finishStartup`.
 class FlutterLaunch {
   FlutterLaunch._(this.session, this.launchResponse, this.bpLine);
 

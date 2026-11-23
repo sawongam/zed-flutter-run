@@ -40,13 +40,11 @@ void main() {
     final fixtures = p.join(repoRoot().path, 'fixtures', 'sample_app');
     final dir = Directory(p.join(ws.projectsDir, 'init_app'))
       ..createSync(recursive: true);
-    File(
-      p.join(fixtures, 'pubspec.yaml'),
-    ).copySync(p.join(dir.path, 'pubspec.yaml'));
+    File(p.join(fixtures, 'pubspec.yaml'))
+        .copySync(p.join(dir.path, 'pubspec.yaml'));
     Directory(p.join(dir.path, 'lib')).createSync();
-    File(
-      p.join(fixtures, 'lib', 'main.dart'),
-    ).copySync(p.join(dir.path, 'lib', 'main.dart'));
+    File(p.join(fixtures, 'lib', 'main.dart'))
+        .copySync(p.join(dir.path, 'lib', 'main.dart'));
     return Directory(dir.resolveSymbolicLinksSync());
   }
 

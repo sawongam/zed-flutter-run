@@ -76,9 +76,10 @@ void main() {
   });
 
   test('UTF-8 BOM is stripped before parsing', () {
-    final r =
-        mergeLabeledArray('\uFEFF[{"label":"a"}]', [e('a'), e('b')])
-            as MergeUpdated;
+    final r = mergeLabeledArray('\uFEFF[{"label":"a"}]', [
+      e('a'),
+      e('b'),
+    ]) as MergeUpdated;
     expect(r.added, 1);
     expect(r.kept, 1);
     expect(r.content.startsWith('\uFEFF'), isFalse);
@@ -93,12 +94,5 @@ void main() {
     final r = mergeLabeledArray('{"a": 1}', [e('a')]);
     expect(r, isA<MergeNeedsManual>());
     expect((r as MergeNeedsManual).reason, contains('not a JSON array'));
-  });
-
-  test('isStrictJson', () {
-    expect(isStrictJson('[]'), isTrue);
-    expect(isStrictJson('[1,]'), isFalse);
-    expect(isStrictJson('// c\n[]'), isFalse);
-    expect(isStrictJson(''), isFalse);
   });
 }

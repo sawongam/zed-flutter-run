@@ -1,8 +1,12 @@
 import '../common/json_types.dart';
+import '../common/version.dart';
 import 'project_detect.dart';
 
-const String _adapter = 'FlutterRun';
+const String _adapter = adapterName;
 const String _root = r'$ZED_WORKTREE_ROOT';
+
+/// VM service address in the generated attach entry; the user replaces it.
+const attachUriPlaceholder = 'ws://127.0.0.1:PORT/TOKEN=/ws';
 
 /// Debug scenarios for `.zed/debug.json` (pure, deterministic order).
 List<Json> debugScenarios(ProjectInfo p) {
@@ -42,6 +46,9 @@ List<Json> debugScenarios(ProjectInfo p) {
       'request': 'attach',
       'type': 'flutter',
       'cwd': _root,
+      // Replace with the VM service URI that `flutter run` prints. Attach
+      // without one waits forever (see docs/CONFIGURATION.md).
+      'vmServiceUri': attachUriPlaceholder,
       'reloadOnSave': 'changed',
     },
   ];

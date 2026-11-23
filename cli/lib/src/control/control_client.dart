@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../common/host_environment.dart';
 import '../common/json_types.dart';
 import '../common/version.dart';
 import 'control_protocol.dart';
@@ -74,8 +75,11 @@ bool _isRefused(Object e) {
   return code == 111 || code == 61 || code == 10061 || code == 1225;
 }
 
-typedef SocketConnector =
-    Future<Socket> Function(String host, int port, Duration timeout);
+typedef SocketConnector = Future<Socket> Function(
+  String host,
+  int port,
+  Duration timeout,
+);
 
 Future<Socket> _defaultConnector(String host, int port, Duration timeout) =>
     Socket.connect(host, port, timeout: timeout);
@@ -83,15 +87,19 @@ Future<Socket> _defaultConnector(String host, int port, Duration timeout) =>
 /// Windows can take 2 s or more to report a refused loopback connection (the
 /// SYN is retried), so a 2 s limit would turn "refused" into a timeout and
 /// keep stale session files forever.
-final Duration defaultConnectTimeout = Platform.isWindows
-    ? const Duration(seconds: 6)
-    : const Duration(seconds: 2);
+Duration defaultConnectTimeoutFor(HostEnvironment env) =>
+    env.isWindows ? const Duration(seconds: 6) : const Duration(seconds: 2);
 
-/// Talks to a session's [ControlServer] over loopback.
+/// Talks to a session's `ControlServer` over loopback.
 class ControlClient {
-  ControlClient({Duration? connectTimeout, SocketConnector? connector})
-    : _connectTimeout = connectTimeout ?? defaultConnectTimeout,
-      _connector = connector ?? _defaultConnector;
+  ControlClient({
+    Duration? connectTimeout,
+    SocketConnector? connector,
+    HostEnvironment? env,
+  }) : _connectTimeout =
+           connectTimeout ??
+           defaultConnectTimeoutFor(env ?? HostEnvironment.system()),
+       _connector = connector ?? _defaultConnector;
 
   final Duration _connectTimeout;
   final SocketConnector _connector;
@@ -171,16 +179,16 @@ class ControlClient {
       );
     }
     final error = decoded['error'];
-    final code = error is Map<String, Object?>
-        ? ControlErrorCode.fromWire(error['code'] as String?)
-        : null;
-    final message = error is Map<String, Object?>
-        ? error['message'] as String?
-        : null;
+    final code = error is Map<String, Object?> ? error['code'] : null;
+    final message = error is Map<String, Object?> ? error['message'] : null;
     return ControlResponse(
       ok: false,
-      errorCode: code ?? ControlErrorCode.internal,
-      errorMessage: message ?? 'The session reported an error.',
+      errorCode:
+          ControlErrorCode.fromWire(code is String ? code : null) ??
+          ControlErrorCode.internal,
+      errorMessage: message is String
+          ? message
+          : 'The session reported an error.',
     );
   }
 

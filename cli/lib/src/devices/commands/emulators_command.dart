@@ -6,22 +6,18 @@ import '../../common/console.dart';
 import '../../common/errors.dart';
 import '../../common/global_options.dart';
 import '../../common/host_environment.dart';
-import '../../common/paths.dart';
 import '../device_lister.dart';
-import '../device_store.dart';
 import '../emulators.dart';
 import '../picker.dart';
+import '../table.dart';
 
 /// `flutter_run emulators [--launch <id>] [--json]`.
 class EmulatorsCommand extends Command<int> {
   EmulatorsCommand({
-    required FlutterRunnerFactory runnerFor,
-    required DeviceStore store,
-    required HostEnvironment env,
-    required Console console,
-  }) : _runnerFor = runnerFor,
-       _env = env,
-       _console = console {
+    required this._runnerFor,
+    required this._env,
+    required this._console,
+  }) {
     GlobalOptions.addTo(argParser);
     argParser
       ..addOption(
@@ -50,15 +46,9 @@ class EmulatorsCommand extends Command<int> {
     if (launchId != null && json) {
       throw const UsageError('Use either --launch or --json, not both.');
     }
-    if (launchId != null && !safeEmulatorIdPattern.hasMatch(launchId)) {
-      throw UsageError(
-        'The emulator id "$launchId" is not valid.',
-        hint: 'Run "flutter_run emulators" to see the available ids.',
-      );
-    }
+    if (launchId != null) requireSafeEmulatorId(launchId);
 
-    final found = findProjectRootFor(options.project, _env);
-    final root = found == null ? null : canonicalDirectory(found, _env);
+    final root = findProjectRootFor(options.project, _env);
     final dir = root ?? options.project ?? _env.currentDirectory;
     final run = await _runnerFor(
       projectDir: dir,
@@ -116,19 +106,9 @@ class EmulatorsCommand extends Command<int> {
   }
 
   void _printTable(List<Emulator> emulators) {
-    int width(String Function(Emulator) f, String header) => [
-      header.length,
-      ...emulators.map((e) => f(e).length),
-    ].reduce((a, b) => a > b ? a : b);
-    final wId = width((e) => e.id, 'Id');
-    final wName = width((e) => e.name, 'Name');
-    final wMan = width((e) => e.manufacturer, 'Manufacturer');
-    String row(String i, String n, String m, String p) =>
-        '${i.padRight(wId)}  ${n.padRight(wName)}  ${m.padRight(wMan)}  $p'
-            .trimRight();
-    _console.out(row('Id', 'Name', 'Manufacturer', 'Platform'));
-    for (final e in emulators) {
-      _console.out(row(e.id, e.name, e.manufacturer, e.platform));
-    }
+    formatTable([
+      ['Id', 'Name', 'Manufacturer', 'Platform'],
+      for (final e in emulators) [e.id, e.name, e.manufacturer, e.platform],
+    ]).forEach(_console.out);
   }
 }

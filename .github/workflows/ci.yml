@@ -4,8 +4,9 @@ on:
   push:
     branches: [master]
     paths-ignore: ["docs/**", "**.md"]
+  # No paths-ignore on pull_request: required checks must always report,
+  # or docs-only PRs could never be merged under branch protection.
   pull_request:
-    paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
 
 permissions:
@@ -15,10 +16,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # The Flutter version the integration suite is tested with.
-  FLUTTER_VERSION: "3.47.9"
-
 jobs:
   versions:
     name: Version consistency
@@ -26,6 +23,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: sh .github/scripts/check-versions.sh
 
   dart:
@@ -44,6 +43,8 @@ jobs:
       EXE: build/flutter_run${{ matrix.os == 'windows-latest' && '.exe' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
           sdk: stable
@@ -57,9 +58,29 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze --fatal-infos
       - name: Unit tests
+        if: runner.os != 'Linux'
         run: dart test --exclude-tags integration --exclude-tags integration-dart
       - name: Integration tests (dart debug_adapter, no Flutter needed)
+        if: runner.os != 'Linux'
         run: dart test -t integration-dart -j 1
+      # On Linux the same two suites run once, with coverage. Report-only:
+      # an artifact and a step summary, no upload service, no threshold.
+      - name: Unit and integration-dart tests with coverage (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          dart test --exclude-tags integration -j 1 --coverage=coverage
+          dart run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info \
+            --report-on=lib --packages=.dart_tool/package_config.json
+          awk -F: '/^LF:/{f+=$2} /^LH:/{h+=$2} END{ if (f>0) printf "### Dart line coverage\n\n%.1f%% (%d of %d lines)\n\n", 100*h/f, h, f; else print "### Dart line coverage\n\nno data\n" }' \
+            coverage/lcov.info | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload Dart coverage (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-dart-lcov
+          path: cli/coverage/lcov.info
+          retention-days: 14
+          if-no-files-found: error
       - name: Compile native executable
         run: mkdir -p build && dart compile exe bin/flutter_run.dart -o "$EXE"
       - name: Smoke test executable
@@ -92,17 +113,50 @@ jobs:
         working-directory: extension
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1 (moving tag)
         with:
-          toolchain: stable
-          components: rustfmt, clippy
-          targets: ${{ matrix.os == 'ubuntu-latest' && 'wasm32-wasip2' || '' }}
-      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+          persist-credentials: false
+      # dtolnay/rust-toolchain is pinned to the commit on its immutable
+      # `1.99.1` branch (commit message "toolchain: 1.99.1"), not the moving `v1`
+      # tag. It installs rustup; the real toolchain, components and targets come
+      # from extension/rust-toolchain.toml on the next step.
+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - name: Add llvm-tools for coverage (Linux)
+        if: runner.os == 'Linux'
+        run: rustup component add llvm-tools-preview
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        if: runner.os == 'Linux'
+        with:
+          tool: cargo-llvm-cov
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3 (peeled commit)
         with:
           workspaces: extension
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked
+      - name: cargo test
+        if: runner.os != 'Linux'
+        run: cargo test --locked
+      # On Linux the tests run once, with coverage (report-only).
+      - name: cargo test with coverage (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cargo llvm-cov --locked --lcov --output-path lcov.info
+          {
+            echo "### Rust coverage"
+            echo
+            echo '```'
+            cargo llvm-cov report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Rust coverage (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-rust-lcov
+          path: extension/lcov.info
+          retention-days: 14
+          if-no-files-found: error
       - name: Clippy (wasm32-wasip2)
         if: matrix.os == 'ubuntu-latest'
         run: cargo clippy --locked --target wasm32-wasip2 -- -D warnings
@@ -118,22 +172,51 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: cargo-deny
+      - name: cargo deny check (advisories, bans, licenses, sources)
+        working-directory: extension
+        run: cargo deny check
+
   integration:
     # Linux only for now (flutter-tester). Add macOS/Windows jobs for this
     # suite if it proves stable there.
-    name: Integration (flutter-tester, Linux)
+    name: Integration (flutter ${{ matrix.flutter.name }}, Linux)
     needs: [versions]  # independent of the per-OS Dart matrix, so one OS (or a queued macOS runner) does not block it
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    continue-on-error: ${{ matrix.flutter.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter:
+          # Pinned version the suite is developed against.
+          - { name: pinned, channel: stable, version: "3.47.9", experimental: false }
+          # No "oldest" leg: the test dependencies (test ^1.33, analyzer) need
+          # Dart >= 3.13, so the suite cannot run on older Flutter SDKs. Older
+          # Flutter versions are untested; see docs/COMPATIBILITY.md.
+          # Early warning for upcoming breakage; never blocks.
+          - { name: beta, channel: beta, version: "", experimental: true }
     defaults:
       run:
         working-directory: cli
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          channel: stable
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ matrix.flutter.channel }}
+          flutter-version: ${{ matrix.flutter.version }}
           cache: true
       - run: flutter precache --linux
       - run: flutter doctor -v
@@ -145,7 +228,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: integration-logs
+          name: integration-logs-${{ matrix.flutter.name }}
           path: cli/.dart_tool/flutter_run_test/**
           retention-days: 7
           if-no-files-found: ignore

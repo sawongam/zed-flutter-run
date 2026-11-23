@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:watcher/watcher.dart';
 
+import '../common/clock.dart';
 import '../common/host_environment.dart';
 import '../common/logger.dart';
 import '../common/paths.dart';
@@ -33,22 +34,16 @@ class ReloadOutcome {
 /// Watches the allow-listed directories and hot reloads on save.
 class ReloadOnSaveWatcher {
   ReloadOnSaveWatcher({
-    required String projectRoot,
-    required bool isDartProgram,
-    required ReloadOnSaveConfig config,
-    required HostEnvironment env,
-    required Future<ReloadOutcome> Function() reload,
-    required void Function(String text, {required bool isError}) notice,
+    required this._projectRoot,
+    required this._isDartProgram,
+    required this._config,
+    required this._env,
+    required this._reload,
+    required this._notice,
     Logger? logger,
-    Stream<WatchEvent> Function(String directory)? watcherFactory,
-  }) : _projectRoot = projectRoot,
-       _isDartProgram = isDartProgram,
-       _config = config,
-       _env = env,
-       _reload = reload,
-       _notice = notice,
-       _logger = logger ?? Logger.silent(),
-       _watcherFactory = watcherFactory;
+    this._watcherFactory,
+    this._clock = const SystemClock(),
+  }) : _logger = logger ?? Logger.silent();
 
   final String _projectRoot;
   final bool _isDartProgram;
@@ -58,13 +53,17 @@ class ReloadOnSaveWatcher {
   final void Function(String text, {required bool isError}) _notice;
   final Logger _logger;
   final Stream<WatchEvent> Function(String directory)? _watcherFactory;
+  final Clock _clock;
 
   ContentHashTracker _hashes = ContentHashTracker();
   final List<StreamSubscription<WatchEvent>> _subscriptions = [];
   final List<String> _watched = [];
   final List<String> _changedPaths = [];
-  final Map<String, String> _changedKeys = {};
-  final Map<String, String> _changedAbs = {};
+
+  /// Hash key and absolute path of every file in [_changedPaths], by
+  /// project-relative path. Entries outlive [_changedPaths] while a reload
+  /// that took them is still running.
+  final Map<String, ({String key, String path})> _changedFiles = {};
   final Map<String, String> _applied = {};
   late PathFilter _filter;
   ReloadCoalescer? _coalescer;
@@ -118,6 +117,7 @@ class ReloadOnSaveWatcher {
 
     _coalescer = ReloadCoalescer(
       debounce: _config.debounce,
+      clock: _clock,
       reload: _runReload,
       onError: (e, st) {
         _logger.error('Reload on save failed', e, st);
@@ -147,9 +147,7 @@ class ReloadOnSaveWatcher {
     }
     _running = true;
     if (_config.mode == ReloadOnSaveMode.changed) {
-      // A cheap baseline of the files already present: late events from
-      // setup work (or an editor rewriting identical bytes) then do not count
-      // as changes. Events are handled after it completes.
+      // Events are handled after the baseline completes.
       _queue = _queue.then((_) => _baseline(dirs));
       await _queue;
     }
@@ -187,8 +185,7 @@ class ReloadOnSaveWatcher {
     await _queue;
     _watched.clear();
     _changedPaths.clear();
-    _changedKeys.clear();
-    _changedAbs.clear();
+    _changedFiles.clear();
     _applied.clear();
     _noticeShown = false;
     _joinRetried = false;
@@ -198,28 +195,32 @@ class ReloadOnSaveWatcher {
   String _display(String dir) =>
       _filter.relativePath(dir) ?? dir.replaceAll('\\', '/');
 
+  /// Hashes the files already present, so that late events from setup work
+  /// (or an editor rewriting identical bytes) do not count as changes. Stops
+  /// at the tracker's capacity: older entries would be evicted anyway.
   Future<void> _baseline(List<String> dirs) async {
-    var count = 0;
+    final files = <String, String>{};
+    scan:
     for (final dir in dirs) {
       try {
         await for (final entity in Directory(
           dir,
         ).list(recursive: true, followLinks: false)) {
-          if (!_running || count >= _maxBaselineFiles) return;
+          if (!_running || files.length >= _hashes.maxEntries) break scan;
           if (entity is! File || !_filter.shouldTrigger(entity.path)) continue;
-          count++;
-          await _hashes.hasChanged(
-            entity.path,
-            key: pathKey(entity.path, _env),
-          );
+          files[entity.path] = pathKey(entity.path, _env);
         }
       } on Object catch (e) {
         _logger.debug('Reload on save baseline skipped for $dir: $e');
       }
     }
+    if (!_running || files.isEmpty) return;
+    try {
+      await _hashes.seed(files);
+    } on Object catch (e) {
+      _logger.debug('Reload on save baseline failed: $e');
+    }
   }
-
-  static const int _maxBaselineFiles = 20000;
 
   void _onEvent(WatchEvent event) {
     if (!_running) return;
@@ -241,8 +242,10 @@ class ReloadOnSaveWatcher {
     if (!_running) return;
     final relative = _filter.relativePath(event.path) ?? event.path;
     if (!_changedPaths.contains(relative)) _changedPaths.add(relative);
-    _changedKeys[relative] = pathKey(event.path, _env);
-    _changedAbs[relative] = event.path;
+    _changedFiles[relative] = (
+      key: pathKey(event.path, _env),
+      path: event.path,
+    );
     _coalescer?.notifyChange();
   }
 
@@ -257,23 +260,19 @@ class ReloadOnSaveWatcher {
     if (_config.mode == ReloadOnSaveMode.changed) {
       var allApplied = paths.isNotEmpty;
       for (final p in paths) {
-        final key = _changedKeys[p];
-        final abs = _changedAbs[p];
-        final d = abs == null ? null : await _hashes.digest(abs);
-        if (key == null || d == null) {
+        final file = _changedFiles[p];
+        final d = file == null ? null : await _hashes.digest(file.path);
+        if (file == null || d == null) {
           allApplied = false;
           continue;
         }
-        digests[key] = d;
-        if (_applied[key] != d) allApplied = false;
+        digests[file.key] = d;
+        if (_applied[file.key] != d) allApplied = false;
       }
       if (allApplied && !_joinRetried) {
         _noticeShown = false;
         for (final p in paths) {
-          if (!_changedPaths.contains(p)) {
-            _changedKeys.remove(p);
-            _changedAbs.remove(p);
-          }
+          if (!_changedPaths.contains(p)) _changedFiles.remove(p);
         }
         return ReloadResult.done;
       }
@@ -291,7 +290,7 @@ class ReloadOnSaveWatcher {
     }
     void forgetBatch() {
       for (final p in paths) {
-        final key = _changedKeys[p];
+        final key = _changedFiles[p]?.key;
         if (key != null) {
           _hashes.forget(key);
           _applied.remove(key);
@@ -311,7 +310,7 @@ class ReloadOnSaveWatcher {
     if (outcome.busy) {
       // Keep the files for the retry; the notice was already printed.
       for (final p in paths) {
-        final key = _changedKeys[p];
+        final key = _changedFiles[p]?.key;
         if (key != null) _applied.remove(key);
       }
       for (final p in paths.reversed) {
@@ -343,10 +342,7 @@ class ReloadOnSaveWatcher {
       }
     }
     for (final p in paths) {
-      if (!_changedPaths.contains(p)) {
-        _changedKeys.remove(p);
-        _changedAbs.remove(p);
-      }
+      if (!_changedPaths.contains(p)) _changedFiles.remove(p);
     }
     return ReloadResult.done;
   }

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "zed-flutter-run",
+      "component": "zed-flutter-run",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "skip-github-release": true,
+      "skip-changelog": true,
+      "release-as": "0.1.0",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "extra-files": [
+        { "type": "yaml", "path": "cli/pubspec.yaml", "jsonpath": "$.version" },
+        { "type": "generic", "path": "cli/lib/src/common/version.dart" },
+        { "type": "toml", "path": "extension/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "extension/Cargo.lock", "jsonpath": "$.package[?(@.name=='flutter_run_debugger')].version" },
+        { "type": "toml", "path": "extension/extension.toml", "jsonpath": "$.version" },
+        { "type": "generic", "path": "extension/src/install.rs" }
+      ]
+    }
+  }
+}

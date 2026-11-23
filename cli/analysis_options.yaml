@@ -5,12 +5,36 @@ analyzer:
     strict-casts: true
     strict-inference: true
     strict-raw-types: true
+  errors:
+    unawaited_futures: error
+    cancel_subscriptions: error
+    close_sinks: error
+    avoid_dynamic_calls: error
 
 linter:
   rules:
-    - prefer_final_locals
-    - avoid_print
-    - unawaited_futures
     - always_declare_return_types
-    - prefer_single_quotes
+    - avoid_catches_without_on_clauses
+    - avoid_dynamic_calls
+    - avoid_print
+    - avoid_void_async
+    - cancel_subscriptions
+    - close_sinks
+    - comment_references
     - directives_ordering
+    - discarded_futures
+    - literal_only_boolean_expressions
+    - no_adjacent_strings_in_list
+    - only_throw_errors
+    - prefer_final_in_for_each
+    - prefer_final_locals
+    - prefer_single_quotes
+    - require_trailing_commas
+    - test_types_in_equals
+    - throw_in_finally
+    - type_annotate_public_apis
+    - unawaited_futures
+    - unnecessary_lambdas
+    - unnecessary_statements
+    - use_named_constants
+    - use_super_parameters

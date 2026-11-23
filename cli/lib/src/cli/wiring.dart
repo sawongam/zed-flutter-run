@@ -1,26 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
 
+import '../common/clock.dart';
 import '../common/console.dart';
-import '../common/errors.dart';
 import '../common/host_environment.dart';
 import '../common/json_types.dart';
 import '../common/logger.dart';
 import '../common/version.dart';
 import '../control/control_client.dart';
 import '../control/control_protocol.dart';
-import '../control/find_sessions.dart';
+import '../control/session_matcher.dart';
 import '../control/session_store.dart';
 import '../dap/channel.dart';
 import '../dap/hot_actions.dart';
 import '../devices/device_lister.dart';
 import '../devices/device_store.dart';
+import '../devices/flutter_runner_factory.dart';
 import '../devtools/browser_opener.dart';
-import '../devtools/commands/devtools_command.dart';
+import '../devtools/vm_service_target_resolver.dart';
 import '../sdk/managed_process.dart';
+import '../sdk/process_runner.dart';
 import '../sdk/process_spec.dart';
 import '../sdk/sdk_resolver.dart';
 import '../watch/reload_on_save_watcher.dart';
+import 'signal_source.dart';
 
 /// Shared objects, built once, and the adapters between modules.
 class Wiring {
@@ -28,17 +31,68 @@ class Wiring {
     required this.env,
     required this.console,
     required this.logger,
+    this.clock = const SystemClock(),
+    this.signals = const SystemSignalSource(),
+    ProcessRunner? processRunner,
     SdkResolver? sdkResolver,
     SessionStore? sessionStore,
     ControlClient? controlClient,
     DeviceStore? deviceStore,
     BrowserOpener? browserOpener,
-  }) : sdkResolver = sdkResolver ?? SdkResolver(env, logger: logger),
-       sessionStore = sessionStore ?? SessionStore(env, logger: logger),
-       controlClient = controlClient ?? ControlClient(),
-       deviceStore = deviceStore ?? DeviceStore(env, logger: logger),
+  }) : processRunner = processRunner ?? SystemProcessRunner(env),
+       sdkResolver = sdkResolver ?? SdkResolver(env, logger: logger),
+       controlClient = controlClient ?? ControlClient(env: env),
+       deviceStore =
+           deviceStore ?? DeviceStore(env, logger: logger, clock: clock),
        browserOpener =
-           browserOpener ?? SystemBrowserOpener(env, logger: logger);
+           browserOpener ?? SystemBrowserOpener(env, logger: logger) {
+    // The store pings sessions with the same client the commands use.
+    this.sessionStore =
+        sessionStore ??
+        SessionStore(
+          env,
+          logger: logger,
+          probe: this.controlClient,
+          clock: clock,
+        );
+    flutterRunnerFactory = createFlutterRunnerFactory(
+      currentDirectory: env.currentDirectory,
+      resolveExecutable: ({projectDir, explicitSdk}) async {
+        final resolution = await this.sdkResolver.resolveOrThrow(
+          projectDir: projectDir ?? env.currentDirectory,
+          explicitSdkPath: explicitSdk,
+        );
+        return resolution.flutter!.flutterExecutable;
+      },
+      execute: (flutter, args, {workingDirectory, required timeout}) async {
+        final base = buildProcessSpec(flutter, args, env);
+        final result = await this.processRunner.run(
+          ProcessSpec(
+            base.executable,
+            base.arguments,
+            workingDirectory: workingDirectory,
+          ),
+          timeout: timeout,
+          logger: logger,
+        );
+        return FlutterToolResult(result.exitCode, result.stdout, result.stderr);
+      },
+    );
+    vmServiceTargetResolver = createVmServiceTargetResolver((directory) async {
+      final records = await findSessionsFor(this.sessionStore, directory, env);
+      return [
+        for (final r in records)
+          RunningSession(
+            vmServiceUri: r.info.vmServiceUri,
+            startedAt: r.info.startedAt,
+            pid: r.info.pid,
+            deviceId: r.info.deviceId,
+            kind: r.info.kind,
+            unresponsive: r.unresponsive,
+          ),
+      ];
+    });
+  }
 
   /// The real process environment. `--verbose` raises the log level to debug,
   /// otherwise `FLUTTER_RUN_LOG_LEVEL` decides; `FLUTTER_RUN_LOG` names a file.
@@ -58,88 +112,19 @@ class Wiring {
   final Console console;
   final Logger logger;
   final SdkResolver sdkResolver;
-  final SessionStore sessionStore;
+  late final SessionStore sessionStore;
   final ControlClient controlClient;
   final DeviceStore deviceStore;
   final BrowserOpener browserOpener;
+  final Clock clock;
+  final SignalSource signals;
+  final ProcessRunner processRunner;
 
   /// Resolves the Flutter SDK and returns a runner for `flutter <args>`.
-  FlutterRunner _flutterRunner(String flutterExecutable) {
-    return (
-      List<String> args, {
-      String? workingDirectory,
-      Duration? timeout,
-    }) async {
-      final ProcessSpec base;
-      try {
-        base = buildProcessSpec(flutterExecutable, args, env);
-      } on ArgumentError catch (e) {
-        throw ExternalToolException(
-          'flutter_run refused to run "flutter ${args.join(' ')}": ${e.message}',
-        );
-      }
-      final spec = ProcessSpec(
-        base.executable,
-        base.arguments,
-        workingDirectory: workingDirectory,
-      );
-      try {
-        final result = await runTool(
-          spec,
-          timeout: timeout ?? const Duration(seconds: 60),
-          logger: logger,
-        );
-        return FlutterToolResult(result.exitCode, result.stdout, result.stderr);
-      } on ExternalToolException catch (e) {
-        // `runTool` reports a timeout as an ExternalToolException without a
-        // cause; the devices module expects a TimeoutException instead. A
-        // spawn failure carries its ProcessException as the cause.
-        if (e.cause == null) {
-          throw TimeoutException(e.message, timeout);
-        }
-        rethrow;
-      }
-    };
-  }
+  late final FlutterRunnerFactory flutterRunnerFactory;
 
-  FlutterRunnerFactory get flutterRunnerFactory =>
-      ({String? projectDir, String? explicitSdk}) async {
-        final resolution = await sdkResolver.resolveOrThrow(
-          projectDir: projectDir ?? env.currentDirectory,
-          explicitSdkPath: explicitSdk,
-        );
-        return _flutterRunner(resolution.flutter!.flutterExecutable);
-      };
-
-  /// The session DevTools should open for: the most recent live session of
-  /// the directory that already has a VM service address.
-  VmServiceTargetResolver get vmServiceTargetResolver =>
-      ({required String directory}) async {
-        final all = await findSessionsFor(sessionStore, directory, env);
-        final live = all.where((r) => !r.unresponsive).toList();
-        if (live.isEmpty) {
-          throw NoSessionException(
-            'No running Flutter app found for $directory.',
-            hint:
-                'Start one from the debugger first (F4 opens the debug '
-                'picker in Zed).',
-          );
-        }
-        final withUri = live.where((r) => r.info.vmServiceUri != null).toList()
-          ..sort((a, b) => b.info.startedAt.compareTo(a.info.startedAt));
-        if (withUri.isEmpty) {
-          throw const SessionRequestException(
-            'The app is still starting. Try again in a moment.',
-          );
-        }
-        final best = withUri.first.info;
-        return VmServiceTarget(
-          vmServiceUri: best.vmServiceUri!,
-          deviceId: best.deviceId,
-          sessionPid: best.pid,
-          kind: best.kind,
-        );
-      };
+  /// The session DevTools should open for.
+  late final VmServiceTargetResolver vmServiceTargetResolver;
 }
 
 /// Adapts a [ManagedProcess] running `<flutter|dart> debug_adapter`.
@@ -185,7 +170,7 @@ class ManagedAdapterConnection implements AdapterConnection {
 /// Answers control requests from `flutter_run reload|restart` using the
 /// proxy's [HotActions].
 class ProxySessionControl implements SessionControl {
-  ProxySessionControl(this._hot, {int? pid}) : _pid = pid;
+  ProxySessionControl(this._hot, {this._pid});
 
   final HotActions _hot;
   final int? _pid;
@@ -242,7 +227,7 @@ class ProxySessionControl implements SessionControl {
       ),
       HotError.busy => const ControlException(
         ControlErrorCode.busy,
-        'Another hot reload or restart is still running.',
+        busyMessage,
       ),
       HotError.adapterError => ControlException(
         ControlErrorCode.adapterError,

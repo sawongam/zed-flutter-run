@@ -61,22 +61,19 @@ void main() {
     await channel.flush();
   });
 
-  test(
-    'C1/C3: a sink that fails with a broken pipe does not hang flush',
-    () async {
-      final input = StreamController<List<int>>();
-      final sink = _BrokenIoSink();
-      final channel = StreamDapChannel(input.stream, sink);
-      channel.send({'seq': 1});
-      sink.breakPipe();
-      await pumpEventQueue();
-      await channel.flush().timeout(const Duration(seconds: 1));
-      channel.send({'seq': 2});
-      expect(sink.written, 1);
-    },
-  );
+  test('a sink that fails with a broken pipe does not hang flush', () async {
+    final input = StreamController<List<int>>();
+    final sink = _BrokenIoSink();
+    final channel = StreamDapChannel(input.stream, sink);
+    channel.send({'seq': 1});
+    sink.breakPipe();
+    await pumpEventQueue();
+    await channel.flush().timeout(const Duration(seconds: 1));
+    channel.send({'seq': 2});
+    expect(sink.written, 1);
+  });
 
-  test('C1: a flush that never completes is bounded', () {
+  test('a flush that never completes is bounded', () {
     fakeAsync((fa) {
       final input = StreamController<List<int>>();
       final channel = StreamDapChannel(input.stream, _HangingIoSink());
@@ -88,7 +85,7 @@ void main() {
   });
 
   test(
-    'C4: an unencodable message is dropped without closing the channel',
+    'an unencodable message is dropped without closing the channel',
     () async {
       final input = StreamController<List<int>>();
       final output = StreamController<List<int>>();

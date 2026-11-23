@@ -241,9 +241,9 @@ class ProxyHarness {
     );
     expect(
       Directory(workspace.sessionsDir).existsSync()
-          ? Directory(
-              workspace.sessionsDir,
-            ).listSync().where((e) => e.path.endsWith('$pid.json'))
+          ? Directory(workspace.sessionsDir)
+                .listSync()
+                .where((e) => e.path.endsWith('$pid.json'))
           : const <FileSystemEntity>[],
       isEmpty,
       reason: 'stale session file',

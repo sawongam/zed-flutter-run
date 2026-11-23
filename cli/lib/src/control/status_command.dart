@@ -13,12 +13,10 @@ import 'session_store.dart';
 /// `flutter_run status [--json]`: running sessions from the session files.
 class StatusCommand extends Command<int> {
   StatusCommand({
-    required SessionStore store,
-    required HostEnvironment env,
-    required Console console,
-  }) : _store = store,
-       _env = env,
-       _console = console {
+    required this._store,
+    required this._env,
+    required this._console,
+  }) {
     GlobalOptions.addTo(argParser);
     argParser.addFlag(
       'json',

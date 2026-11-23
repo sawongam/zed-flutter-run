@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:args/command_runner.dart';
 
+import '../common/clock.dart';
 import '../common/console.dart';
 import '../common/errors.dart';
 import '../common/global_options.dart';
@@ -17,16 +18,13 @@ import 'session_store.dart';
 /// started Flutter session at once and report one line per session.
 abstract class HotActionCommand extends Command<int> {
   HotActionCommand({
-    required SessionStore store,
-    required ControlClient client,
-    required HostEnvironment env,
-    required Console console,
-    required Duration waitingNoticeAfter,
-  }) : _store = store,
-       _client = client,
-       _env = env,
-       _console = console,
-       _waitingNoticeAfter = waitingNoticeAfter {
+    required this._store,
+    required this._client,
+    required this._env,
+    required this._console,
+    required this._waitingNoticeAfter,
+    this._clock = const SystemClock(),
+  }) {
     GlobalOptions.addTo(argParser);
     argParser.addOption(
       'timeout',
@@ -41,6 +39,7 @@ abstract class HotActionCommand extends Command<int> {
   final HostEnvironment _env;
   final Console _console;
   final Duration _waitingNoticeAfter;
+  final Clock _clock;
 
   /// Control command on the wire.
   String get controlCommand;
@@ -89,28 +88,10 @@ abstract class HotActionCommand extends Command<int> {
       );
     }
 
-    final eligible = <SessionRecord>[];
-    for (final record in matching) {
-      final info = record.info;
-      if (info.kind != 'flutter') {
-        _console.err(
-          'Skipped pid ${info.pid}: it is a Dart console session, not a '
-          'Flutter app.',
-        );
-      } else if (record.unresponsive) {
-        _console.err(
-          'Skipped pid ${info.pid}: it did not answer. If Zed is hung, stop '
-          'that debug session.',
-        );
-      } else if (!info.appStarted) {
-        _console.err('pid ${info.pid}: the app is still starting.');
-      } else {
-        eligible.add(record);
-      }
-    }
+    final eligible = _eligibleSessions(matching);
     if (eligible.isEmpty) return ExitCodes.sessionError;
 
-    final waiting = Timer(_waitingNoticeAfter, () {
+    final waiting = _clock.timer(_waitingNoticeAfter, () {
       _console.err(
         'Waiting... the app may be paused at a breakpoint (Ctrl+C to stop '
         'waiting).',
@@ -133,6 +114,30 @@ abstract class HotActionCommand extends Command<int> {
     if (timedOut) return ExitCodes.timeout;
     if (failed) return ExitCodes.sessionError;
     return ExitCodes.ok;
+  }
+
+  /// The sessions that can act now; says on stderr why each other one cannot.
+  List<SessionRecord> _eligibleSessions(List<SessionRecord> matching) {
+    final eligible = <SessionRecord>[];
+    for (final record in matching) {
+      final info = record.info;
+      if (info.kind != 'flutter') {
+        _console.err(
+          'Skipped pid ${info.pid}: it is a Dart console session, not a '
+          'Flutter app.',
+        );
+      } else if (record.unresponsive) {
+        _console.err(
+          'Skipped pid ${info.pid}: it did not answer. If Zed is hung, stop '
+          'that debug session.',
+        );
+      } else if (!info.appStarted) {
+        _console.err('pid ${info.pid}: the app is still starting.');
+      } else {
+        eligible.add(record);
+      }
+    }
+    return eligible;
   }
 
   Duration _parseTimeout() {

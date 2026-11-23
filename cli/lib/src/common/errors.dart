@@ -51,22 +51,10 @@ class SessionRequestException extends FlutterRunException {
     : super(exitCode: ExitCodes.sessionError);
 }
 
-/// A session did not answer in time (exit 5).
-class RequestTimeoutException extends FlutterRunException {
-  const RequestTimeoutException(super.message, {super.hint})
-    : super(exitCode: ExitCodes.timeout);
-}
-
 /// Flutter/Dart SDK could not be resolved (exit 6).
 class SdkNotFoundException extends FlutterRunException {
-  const SdkNotFoundException(
-    super.message, {
-    this.tried = const <String>[],
-    super.hint,
-  }) : super(exitCode: ExitCodes.sdkNotFound);
-
-  /// Human-readable descriptions of every location that was tried.
-  final List<String> tried;
+  const SdkNotFoundException(super.message, {super.hint})
+    : super(exitCode: ExitCodes.sdkNotFound);
 }
 
 /// No devices or an unknown device id (exit 7).
@@ -81,14 +69,14 @@ class ProjectNotFoundException extends FlutterRunException {
     : super(exitCode: ExitCodes.projectNotFound);
 }
 
-/// A file could not be edited safely (exit 9).
-class ManualActionRequired extends FlutterRunException {
-  const ManualActionRequired(super.message, {super.hint})
-    : super(exitCode: ExitCodes.manualActionRequired);
-}
-
 /// A `flutter`/`dart`/browser subprocess failed (exit 10).
 class ExternalToolException extends FlutterRunException {
   const ExternalToolException(super.message, {super.hint, super.cause})
     : super(exitCode: ExitCodes.externalToolFailed);
+}
+
+/// A subprocess did not finish in time and was stopped (exit 10). A type of
+/// its own so callers can replace the message with one that fits the tool.
+class ToolTimeoutException extends ExternalToolException {
+  const ToolTimeoutException(super.message, {super.hint});
 }

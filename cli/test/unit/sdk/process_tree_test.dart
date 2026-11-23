@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter_run/src/common/clock.dart';
 import 'package:flutter_run/src/common/host_environment.dart';
 import 'package:flutter_run/src/sdk/process_tree.dart';
 import 'package:test/test.dart';
@@ -15,6 +17,31 @@ garbage line
   abc  def
 ''';
 
+/// A clock whose `delay` only moves its own time, so tests never wait.
+class _ManualClock implements Clock {
+  DateTime time = DateTime.utc(2026);
+  final List<Duration> delays = [];
+
+  @override
+  DateTime now() => time;
+
+  @override
+  Future<void> delay(Duration d) async {
+    delays.add(d);
+    time = time.add(d);
+  }
+
+  @override
+  Timer timer(Duration d, void Function() cb) => throw UnimplementedError();
+
+  @override
+  Timer periodic(Duration d, void Function(Timer) cb) =>
+      throw UnimplementedError();
+
+  @override
+  Stopwatch stopwatch() => Stopwatch();
+}
+
 HostEnvironment posix() => HostEnvironment(
   os: HostOs.linux,
   environment: const {},
@@ -23,27 +50,8 @@ HostEnvironment posix() => HostEnvironment(
 
 void main() {
   sharedDaemonTests();
-  group('parsePsOutput', () {
-    test('golden', () {
-      final map = parsePsOutput(_psGolden);
-      expect(map, {
-        0: [1],
-        1: [100, 200],
-        100: [101, 102],
-        102: [103],
-      });
-    });
-    test('plain "pid ppid" lines, CRLF and blanks', () {
-      expect(parsePsOutput('1 0\r\n\r\n 5 1 \r\n'), {
-        0: [1],
-        1: [5],
-      });
-    });
-    test('empty', () => expect(parsePsOutput(''), isEmpty));
-  });
-
   group('collectDescendants', () {
-    final map = parsePsOutput(_psGolden);
+    final map = parseProcessTable(_psGolden).childrenOf;
     test('golden', () {
       expect(collectDescendants(map, 100), {101, 102, 103});
       expect(collectDescendants(map, 1), {100, 101, 102, 103, 200});
@@ -96,6 +104,44 @@ void main() {
       } else {
         expect(table.byPid, isEmpty); // neither tool exists here
       }
+    });
+
+    test('POSIX runs ps in the C locale through the injected runner', () async {
+      final env = HostEnvironment(
+        os: HostOs.macos,
+        environment: const {},
+        currentDirectory: '/',
+      );
+      final calls = <(String, List<String>, Map<String, String>?)>[];
+      final table = await readProcessTable(
+        env,
+        runProcess: (exe, args, {environment}) async {
+          calls.add((exe, args, environment));
+          return ProcessResult(0, 0, _psGolden, '');
+        },
+      );
+      expect(calls.single.$1, 'ps');
+      expect(calls.single.$3, containsPair('LC_ALL', 'C'));
+      expect(table.byPid[101]!.ppid, 100);
+    });
+
+    test('Windows falls back from PowerShell to wmic', () async {
+      final env = HostEnvironment(
+        os: HostOs.windows,
+        environment: const {},
+        currentDirectory: r'C:\',
+      );
+      final tried = <String>[];
+      final table = await readProcessTable(
+        env,
+        runProcess: (exe, args, {environment}) async {
+          tried.add(exe);
+          if (exe == 'powershell') throw const ProcessException('x', []);
+          return ProcessResult(0, 1, '', '');
+        },
+      );
+      expect(tried, ['powershell', 'wmic']);
+      expect(table.byPid, isEmpty);
     });
   });
 
@@ -239,6 +285,41 @@ void main() {
     });
   });
 
+  group('killTree with an injected clock', () {
+    test('waits through clock.delay, not real time, and escalates', () async {
+      ProcessInfo row(int pid, int ppid, String start) =>
+          ProcessInfo(pid, ppid, startTime: start);
+      final clock = _ManualClock();
+      final sent = <(int, ProcessSignal)>[];
+      final started = DateTime.now();
+      await killTree(
+        10,
+        {11},
+        posix(),
+        grace: const Duration(seconds: 2),
+        startTimes: {10: 'a', 11: 'b'},
+        readTable: () async =>
+            ProcessTable([row(10, 1, 'a'), row(11, 10, 'b')]),
+        sendSignal: (pid, s) {
+          sent.add((pid, s));
+          return true;
+        },
+        clock: clock,
+      );
+      expect(clock.delays, isNotEmpty);
+      expect(
+        clock.time.difference(DateTime.utc(2026)),
+        greaterThanOrEqualTo(const Duration(seconds: 2)),
+      );
+      expect(sent.any((e) => e.$2 == ProcessSignal.sigkill), isTrue);
+      expect(
+        DateTime.now().difference(started),
+        lessThan(const Duration(seconds: 1)),
+        reason: 'no real waiting',
+      );
+    });
+  });
+
   group('killTree on Windows', () {
     test(
       'runs taskkill /T /F on the root and extra pids without a shell',
@@ -254,7 +335,7 @@ void main() {
           {5678},
           env,
           readTable: () async => const ProcessTable.empty(),
-          runProcess: (exe, args) async {
+          runProcess: (exe, args, {environment}) async {
             expect(exe, 'taskkill');
             calls.add(args);
             return ProcessResult(0, 0, '', '');
@@ -287,7 +368,7 @@ void main() {
         env,
         startTimes: const {600: '100', 700: '50'},
         readTable: () async => table,
-        runProcess: (exe, args) async {
+        runProcess: (exe, args, {environment}) async {
           calls.add(args);
           if (args[1] == '600') {
             table = parseWindowsProcessCsv(
@@ -313,7 +394,7 @@ void main() {
         const {},
         env,
         readTable: () async => alive ? table : const ProcessTable.empty(),
-        runProcess: (exe, args) async {
+        runProcess: (exe, args, {environment}) async {
           calls.add(args);
           alive = false;
           return ProcessResult(0, 0, '', '');
@@ -387,7 +468,7 @@ void main() {
 }
 
 void sharedDaemonTests() {
-  group('shared daemons (ADR 0007 P1)', () {
+  group('shared daemons', () {
     test('adb, Gradle, Kotlin and the Dart tooling daemon are recognised', () {
       for (final c in [
         '/home/u/Android/Sdk/platform-tools/adb -L tcp:5037 fork-server server',

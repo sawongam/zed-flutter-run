@@ -195,7 +195,7 @@ void main() {
       expect(result.stdout.trim(), 'args: devices --machine');
     }, skip: Platform.isWindows ? 'needs a shell script' : false);
 
-    test('translates a timeout into a TimeoutException', () async {
+    test('reports a timeout as a ToolTimeoutException', () async {
       final sdk = sdkWithScript('sleep 30');
       final run = await t.wiring.flutterRunnerFactory(
         projectDir: t.dir.path,
@@ -203,15 +203,14 @@ void main() {
       );
       await expectLater(
         run(['devices'], timeout: const Duration(milliseconds: 300)),
-        throwsA(isA<TimeoutException>()),
+        throwsA(isA<ToolTimeoutException>()),
       );
     }, skip: Platform.isWindows ? 'needs a shell script' : false);
 
     test('keeps a spawn failure an ExternalToolException', () async {
       final sdk = makeFakeSdk('${t.dir.path}/sdk');
-      File(
-        '$sdk/bin/flutter',
-      ).writeAsStringSync('#!/nonexistent/interpreter\n');
+      File('$sdk/bin/flutter')
+          .writeAsStringSync('#!/nonexistent/interpreter\n');
       final run = await t.wiring.flutterRunnerFactory(
         projectDir: t.dir.path,
         explicitSdk: sdk,

@@ -8,6 +8,7 @@ class RestartCommand extends HotActionCommand {
     required super.client,
     required super.env,
     required super.console,
+    super.clock,
     super.waitingNoticeAfter = const Duration(seconds: 3),
   });
 
