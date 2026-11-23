@@ -1,38 +1,58 @@
-# Release workflow. Nothing here publishes anywhere public on its own:
-#   build / checksums / attest  -> artifacts + signed build provenance only.
-#   publish-github-release      -> creates a DRAFT GitHub release, and only after a
-#                                  human approves the protected `release` environment
-#                                  (Settings > Environments > release > Required reviewers).
-# No pub.dev (see publish-pub.yml, also environment-gated), crates.io, Homebrew,
-# Scoop or Zed registry publishing happens here.
+# Release workflow. Runs when a push to master changes cli/pubspec.yaml to a
+# version that has no release yet, or by hand (workflow_dispatch). It builds the
+# binaries, writes SHA256SUMS, attests them, then creates the git tag vX.Y.Z and
+# the GitHub release. If the release already exists, every job after `version` is
+# skipped, so ordinary pushes do nothing.
 #
-# Triggered by pushing a tag `v*` or manually (workflow_dispatch). The attest and
-# publish jobs run for tag pushes only.
-#
-# Human release steps (see docs/RELEASE.md for the full, authoritative list):
-#   1. Bump versions (.github/scripts/check-versions.sh must pass), tag vX.Y.Z.
-#   2. The workflow builds, attests, then waits for approval of the `release` environment.
-#   3. Approve; review the DRAFT release and publish it yourself.
-#   4. Run .github/scripts/pin-checksums.sh SHA256SUMS > extension/src/checksums.rs
-#      and commit it (flip PUBLISHED_ON_PUB only after pub.dev publication).
-#   5. Submit the extension / publish packages by hand (next commit, not the tag commit).
+# No pub.dev (see publish-pub.yml), crates.io, Homebrew, Scoop or Zed registry
+# publishing happens here. After the release, pin the checksums into the
+# extension: see docs/RELEASE.md.
 name: Release build
 
 on:
   push:
-    tags: ["v*"]
+    branches: [master]
+    paths: ["cli/pubspec.yaml"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
+  version:
+    name: Read version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      new: ${{ steps.v.outputs.new }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Versions agree and the release does not exist yet
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sh .github/scripts/check-versions.sh
+          ver=$(sed -n 's/^version:[[:space:]]*\([0-9][^[:space:]#]*\).*/\1/p' cli/pubspec.yaml | head -n 1)
+          echo "tag=v$ver" >> "$GITHUB_OUTPUT"
+          if gh release view "v$ver" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "Release v$ver already exists, nothing to do."
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build ${{ matrix.target }}
+    needs: [version]
+    if: needs.version.outputs.new == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -49,24 +69,14 @@ jobs:
         shell: bash
         working-directory: cli
     steps:
-      # workflow_dispatch runs on a branch: slashes in the ref name are replaced.
       - name: Compute asset name
-        run: echo "ASSET=flutter_run-$(echo "$GITHUB_REF_NAME" | tr '/' '-')-${{ matrix.target }}${{ matrix.ext }}" >> "$GITHUB_ENV"
+        run: echo "ASSET=flutter_run-${{ needs.version.outputs.tag }}-${{ matrix.target }}${{ matrix.ext }}" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
           sdk: stable
-      - name: Check versions match the tag
-        if: github.ref_type == 'tag'
-        run: |
-          sh ../.github/scripts/check-versions.sh
-          ver=$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml)
-          if [ "$GITHUB_REF_NAME" != "v$ver" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match pubspec version v$ver" >&2
-            exit 1
-          fi
       - run: dart pub get --enforce-lockfile
       - run: mkdir -p build && dart compile exe bin/flutter_run.dart -o "build/$ASSET"
       - name: Smoke test
@@ -106,7 +116,6 @@ jobs:
 
   attest:
     name: Build provenance
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: [checksums]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -128,16 +137,12 @@ jobs:
             dist/SHA256SUMS
 
   publish-github-release:
-    name: Draft GitHub release (needs approval)
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [attest]
+    name: GitHub release
+    needs: [version, attest]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The maintainer must create the `release` environment with required
-    # reviewers; without it this job would run unattended. See docs/RELEASE.md.
-    environment: release
     permissions:
-      contents: write   # create the (draft) release
+      contents: write   # create the tag and the release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -148,7 +153,7 @@ jobs:
           merge-multiple: true
       - name: Extract release notes from CHANGELOG.md
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
           ver="${TAG#v}"
           awk -v ver="$ver" '
@@ -160,15 +165,14 @@ jobs:
             exit 1
           fi
           cat release-notes.md
-      - name: Create draft release
+      - name: Create release (and the tag, on this commit)
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
           ls -l dist
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --draft \
+            --target "$GITHUB_SHA" \
             --title "$TAG" \
             --notes-file release-notes.md

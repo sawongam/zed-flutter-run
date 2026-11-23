@@ -3,24 +3,22 @@
 For maintainers. A release has an order that matters, because the extension carries the SHA-256 of each release binary and so must be finished after the binaries exist:
 
 ```
-version bump -> tag -> CI builds binaries -> publish GitHub release -> pin checksums -> pub.dev -> Zed registry
+version bump on master -> CI builds binaries, tags and publishes the GitHub release -> pin checksums -> pub.dev -> Zed registry
 ```
 
 Examples below use `0.1.0`.
 
 ## One-time repository setup
 
-Do this before pushing the first tag. Without the environments, the gated jobs run without asking.
+Do this before the first release.
 
-- **Environments** (Settings > Environments), each with yourself as required reviewer and deployment limited to `v*` tags:
-  - `release`: approval before `release.yml` creates the draft GitHub release.
-  - `pub.dev`: approval before `publish-pub.yml` publishes.
+- **Environment** `pub.dev` (Settings > Environments), with yourself as required reviewer and deployment limited to `v*` tags. It gates `publish-pub.yml`. Without it that job runs without asking.
 - **Rules for `master`:** require pull requests and the CI checks, block force pushes. Add a tag rule for `v*` that blocks updates and deletion.
-- **Security:** enable private vulnerability reporting, Dependabot alerts, and secret scanning with push protection.
+- **Security:** enable private vulnerability reporting and secret scanning with push protection.
 - **Actions:** allow GitHub Actions to create pull requests, so `release-please.yml` can open version PRs.
 - **Labels:** run the `Sync labels` workflow once.
 
-## 1. Before you tag
+## 1. Before you release
 
 - [ ] CI is green on `master`.
 - [ ] You ran [TESTING_IN_ZED.md](TESTING_IN_ZED.md) on this commit.
@@ -35,14 +33,9 @@ Do this before pushing the first tag. Without the environments, the gated jobs r
 - [ ] `CHANGELOG.md` has a `## [0.1.0] - YYYY-MM-DD` section with the date filled in. The release workflow takes the release notes from it and fails if it is missing. Copy the section to `cli/CHANGELOG.md` for pub.dev.
 - [ ] The README install section is true for this release.
 
-## 2. Tag and build
+## 2. Push and build
 
-```sh
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
-```
-
-The tag starts `release.yml`, which compiles `flutter_run` on five runners and produces:
+Merge the version bump to `master`. There is no tag to push. `release.yml` runs when a push changes `cli/pubspec.yaml` to a version that has no GitHub release yet, and does nothing otherwise. It creates the tag `v0.1.0` on that commit itself. It compiles `flutter_run` on five runners and produces:
 
 | Asset | Runner |
 |---|---|
@@ -53,7 +46,7 @@ The tag starts `release.yml`, which compiles `flutter_run` on five runners and p
 | `flutter_run-v0.1.0-windows-x64.exe` | `windows-latest` |
 | `SHA256SUMS` | |
 
-The asset names come from the tag name and must match what `asset_name` in `extension/src/install.rs` computes. Always build from the tag: a manual run on `master` produces names the extension will never ask for.
+The asset names come from the version in `cli/pubspec.yaml` and must match what `asset_name` in `extension/src/install.rs` computes.
 
 Each file gets a build provenance attestation. Anyone can check one:
 
@@ -61,17 +54,16 @@ Each file gets a build provenance attestation. Anyone can check one:
 gh attestation verify flutter_run-v0.1.0-linux-x64 --repo sawongam/zed-flutter-run
 ```
 
-## 3. Publish the GitHub release
+## 3. Check the GitHub release
 
-Approve the `release` environment on the workflow run page. The job creates a **draft** release with the six files. Then:
+The workflow publishes the release with the six files and the notes from `CHANGELOG.md`. Then:
 
-- [ ] Download the binary for your platform from the draft, run `flutter_run version` and `flutter_run doctor`.
+- [ ] Download the binary for your platform, run `flutter_run version` and `flutter_run doctor`.
 - [ ] Check `sha256sum -c SHA256SUMS`.
-- [ ] Publish the draft.
 
-Never replace an asset on a published release. The checksums are about to be compiled into the extension, and a changed file would fail verification for every user. Fix a bad release with a new patch version.
+Never replace an asset on a release. The checksums are about to be compiled into the extension, and a changed file would fail verification for every user. Fix a bad release with a new patch version.
 
-The binaries are not signed. Say so in the release notes:
+The binaries are not signed. Add this to the release notes by editing the release:
 
 - **macOS:** a binary downloaded with a browser is quarantined. Remove the flag with `xattr -d com.apple.quarantine flutter_run`. Downloads made by `curl`, pub or the Zed extension are not affected.
 - **Windows:** SmartScreen warns on first run. Choose **More info > Run anyway**.
@@ -101,7 +93,7 @@ dart pub publish
 
 Afterwards:
 
-- [ ] On pub.dev, open the package's **Admin** tab and enable automated publishing from `sawongam/zed-flutter-run` with the tag pattern `v{{version}}` and the environment `pub.dev`. Later releases then publish from `publish-pub.yml` after your approval.
+- [ ] On pub.dev, open the package's **Admin** tab and enable automated publishing from `sawongam/zed-flutter-run` with the tag pattern `v{{version}}` and the environment `pub.dev`. Later releases publish when you run `publish-pub.yml` by hand from the release tag, after your approval.
 - [ ] Set `PUBLISHED_ON_PUB` to `true` in `extension/src/install.rs`, so the "not found" message also suggests `dart pub global activate flutter_run`. Run `cargo test` and commit.
 
 ## 6. Zed extension registry
