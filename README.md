@@ -3,10 +3,10 @@
 Run and debug Flutter apps in [Zed](https://zed.dev) the way you do in VS Code: press a key to launch, set breakpoints, hot reload on save, pick a device, open DevTools.
 
 [![CI](https://github.com/sawongam/zed-flutter-run/actions/workflows/ci.yml/badge.svg)](https://github.com/sawongam/zed-flutter-run/actions/workflows/ci.yml)
+[![pub package](https://img.shields.io/pub/v/flutter_run.svg)](https://pub.dev/packages/flutter_run)
+[![Release](https://img.shields.io/github/v/release/sawongam/zed-flutter-run)](https://github.com/sawongam/zed-flutter-run/releases/latest)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sawongam/zed-flutter-run/badge)](https://scorecard.dev/viewer/?uri=github.com/sawongam/zed-flutter-run)
-
-> **Preview (0.1.0).** The test suite drives the real Flutter and Dart debug adapters on Linux, macOS and Windows, but the tool has had little use in day-to-day Zed sessions yet. Expect rough edges and please [report them](https://github.com/sawongam/zed-flutter-run/issues).
 
 ## What you get
 
@@ -26,11 +26,11 @@ Code completion and analysis are not part of this project. Use Zed's Dart extens
 
 ## Quick start
 
-On Linux or macOS, with Flutter, Zed and [rustup](https://rustup.rs) installed:
+With Flutter, Zed and [rustup](https://rustup.rs) installed:
 
 ```sh
 # 1. The command-line tool (once per computer)
-dart pub global activate --source git https://github.com/sawongam/zed-flutter-run --git-path cli
+dart pub global activate flutter_run
 flutter_run doctor
 
 # 2. The Zed extension (once per computer)
@@ -46,7 +46,7 @@ flutter_run init
 zed .
 ```
 
-In Zed, press **F4** and choose **Flutter: Debug**. Each step is explained below. On Windows, follow the Windows notes in step 1.
+In Zed, press **F4** and choose **Flutter: Debug**. Each step is explained below.
 
 ## Install
 
@@ -60,10 +60,8 @@ There are two parts. The `flutter_run` command-line tool does the work. The smal
 
 ### Step 1. Install `flutter_run`
 
-**Linux and macOS:**
-
 ```sh
-dart pub global activate --source git https://github.com/sawongam/zed-flutter-run --git-path cli
+dart pub global activate flutter_run
 ```
 
 Then make sure `~/.pub-cache/bin` is on your `PATH`. If `flutter_run` is not found, add this line to `~/.bashrc`, `~/.zshrc` or your shell's equivalent, and open a new terminal:
@@ -72,7 +70,7 @@ Then make sure `~/.pub-cache/bin` is on your `PATH`. If `flutter_run` is not fou
 export PATH="$PATH:$HOME/.pub-cache/bin"
 ```
 
-**Windows:** Zed cannot manage the `.bat` launcher that `dart pub global activate` creates, so build a real `.exe` instead:
+**Windows:** Zed cannot manage the `.bat` launcher that `dart pub global activate` creates. Download `flutter_run-<version>-windows-x64.exe` from the [latest release](https://github.com/sawongam/zed-flutter-run/releases/latest), rename it to `flutter_run.exe` and put it in a folder on your `PATH`. Or build it yourself:
 
 ```powershell
 git clone https://github.com/sawongam/zed-flutter-run
@@ -81,7 +79,7 @@ dart pub get
 dart compile exe bin\flutter_run.dart -o flutter_run.exe
 ```
 
-Then copy `flutter_run.exe` to a folder on your `PATH`.
+Prebuilt binaries for Linux, macOS and Windows are on the release page. Each one has a published SHA-256 and a build provenance attestation.
 
 **Check it.** This should find your Flutter SDK and list your devices:
 
@@ -190,7 +188,7 @@ The first three are Zed's own keys. The last three come from `flutter_run keymap
 
 ## Update and uninstall
 
-**Update:** run the same install command again (on Windows, `git pull` and the `dart compile exe` line again). For the extension, `git pull` in the clone, then click **Rebuild** next to the extension on the Extensions page. Stop any running debug session first.
+**Update:** run `dart pub global activate flutter_run` again (on Windows, download the new `.exe`). For the extension, `git pull` in the clone, then click **Rebuild** next to the extension on the Extensions page. Stop any running debug session first.
 
 **Uninstall:**
 
@@ -201,7 +199,11 @@ The first three are Zed's own keys. The last three come from `flutter_run keymap
 
 ## Compatibility
 
-Zed 0.205 or newer (the first version with debugger extensions), the latest stable Flutter, and Linux, macOS or Windows. CI runs the unit tests and the Dart debug adapter on all three systems, and the Flutter debug adapter on Linux with the headless `flutter-tester` device. Real devices (desktop, Android, iOS, web) are not covered by CI, so a short [issue](https://github.com/sawongam/zed-flutter-run/issues) with your versions and the output of `flutter_run doctor` helps a lot.
+Zed 0.205 or newer (the first version with debugger extensions), the latest stable Flutter, and Linux, macOS or Windows.
+
+CI runs the unit tests and the Dart debug adapter on all three systems, and the Flutter debug adapter on Linux with the headless `flutter-tester` device. Each release is also checked by hand in Zed with a checklist that covers launching, breakpoints, hot reload and restart, DevTools, attach, stopping cleanly and error messages.
+
+If something does not work on your device or setup, open an [issue](https://github.com/sawongam/zed-flutter-run/issues) with your versions and the output of `flutter_run doctor`.
 
 ## Privacy
 
