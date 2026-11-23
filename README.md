@@ -4,7 +4,6 @@ Run and debug Flutter apps in [Zed](https://zed.dev) the way you do in VS Code: 
 
 [![CI](https://github.com/sawongam/zed-flutter-run/actions/workflows/ci.yml/badge.svg)](https://github.com/sawongam/zed-flutter-run/actions/workflows/ci.yml)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sawongam/zed-flutter-run/badge)](https://scorecard.dev/viewer/?uri=github.com/sawongam/zed-flutter-run)
 
 > **Preview (0.1.0).** The test suite drives the real Flutter and Dart debug adapters on Linux, macOS and Windows, but the tool has had little use in day-to-day Zed sessions yet. Expect rough edges and please [report them](https://github.com/sawongam/zed-flutter-run/issues).
 

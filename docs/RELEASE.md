@@ -15,7 +15,6 @@ Do this before the first release.
 - **Environment** `pub.dev` (Settings > Environments), with yourself as required reviewer and deployment limited to `v*` tags. It gates `publish-pub.yml`. Without it that job runs without asking.
 - **Rules for `dev` and `prod`:** require pull requests and the CI checks, block force pushes. `dev` is the default branch where work lands. `prod` only receives merges from `dev`. Add a tag rule for `v*` that blocks updates and deletion.
 - **Security:** enable private vulnerability reporting and secret scanning with push protection.
-- **Labels:** run the `Sync labels` workflow once.
 
 ## Manual test in Zed
 
