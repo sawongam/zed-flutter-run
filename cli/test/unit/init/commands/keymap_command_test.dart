@@ -156,8 +156,11 @@ void main() {
   });
 
   test('--file overrides the location', () async {
+    // The host's path rules must match the real file system, or a Windows
+    // path would be read as relative.
+    final os = Platform.isWindows ? HostOs.windows : HostOs.linux;
     final path = p.join(tmp.path, 'mine.json');
-    await run(['--file', path]);
+    await run(['--file', path], os: os);
     expect(File(path).existsSync(), isTrue);
   });
 
