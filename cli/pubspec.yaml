@@ -1,12 +1,14 @@
 name: flutter_run
-description: Flutter Run & Debug in Zed - DAP proxy and CLI (hot reload, reload on save, devices, DevTools).
+description: >-
+  Flutter Run & Debug in Zed - DAP proxy and CLI (hot reload, reload on save,
+  devices, DevTools).
 version: 0.1.0
 repository: https://github.com/sawongam/zed-flutter-run
 issue_tracker: https://github.com/sawongam/zed-flutter-run/issues
 environment:
   sdk: ^3.13.0
 executables:
-  flutter_run:
+  flutter_run: null
 dependencies:
   args: ^2.7.0
   crypto: ^3.0.8
