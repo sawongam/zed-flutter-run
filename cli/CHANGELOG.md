@@ -2,6 +2,15 @@
 
 This project follows [Semantic Versioning](https://semver.org/). The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-11-24
+
+Documentation release. No change in behaviour.
+
+### Changed
+
+- The README and the example now install with `dart pub global activate flutter_run`.
+- Removed the preview notice.
+
 ## [0.1.0] - 2026-11-23
 
 First preview release.

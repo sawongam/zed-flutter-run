@@ -2,6 +2,14 @@
 
 This project follows [Semantic Versioning](https://semver.org/). The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-11-24
+
+Documentation release. No change in behaviour.
+
+- The README and the pub.dev package page now say that `flutter_run` is on pub.dev and install with `dart pub global activate flutter_run`.
+- Removed the preview notice. The docs describe how releases are checked, in CI and by hand in Zed.
+- Windows install points to the prebuilt `.exe` on the release page.
+
 ## [0.1.0] - 2026-11-23
 
 First preview release.

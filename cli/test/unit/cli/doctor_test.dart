@@ -33,7 +33,7 @@ void main() {
     File('$project/.fvmrc').writeAsStringSync('{"flutter":"3.99.0"}');
     final code = await runner.execute(['doctor', '--project', project]);
     expect(code, ExitCodes.sdkNotFound);
-    expect(out(), contains('flutter_run 0.1.0'));
+    expect(out(), contains('flutter_run 0.1.1'));
     expect(out(), contains('How the Flutter SDK was looked for:'));
     expect(out(), contains('.fvmrc'));
     expect(out(), contains('Flutter SDK: not found'));
