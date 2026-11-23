@@ -40,13 +40,11 @@ void main() {
     final fixtures = p.join(repoRoot().path, 'fixtures', 'sample_app');
     final dir = Directory(p.join(ws.projectsDir, 'init_app'))
       ..createSync(recursive: true);
-    File(
-      p.join(fixtures, 'pubspec.yaml'),
-    ).copySync(p.join(dir.path, 'pubspec.yaml'));
+    File(p.join(fixtures, 'pubspec.yaml'))
+        .copySync(p.join(dir.path, 'pubspec.yaml'));
     Directory(p.join(dir.path, 'lib')).createSync();
-    File(
-      p.join(fixtures, 'lib', 'main.dart'),
-    ).copySync(p.join(dir.path, 'lib', 'main.dart'));
+    File(p.join(fixtures, 'lib', 'main.dart'))
+        .copySync(p.join(dir.path, 'lib', 'main.dart'));
     return Directory(dir.resolveSymbolicLinksSync());
   }
 
@@ -95,16 +93,20 @@ void main() {
       },
     );
 
-    test('init leaves a tasks.json with comments alone and exits 9', () async {
-      final project = flutterProject();
-      final tasksFile = File(p.join(project.path, '.zed', 'tasks.json'))
-        ..createSync(recursive: true)
-        ..writeAsStringSync('// my tasks\n[\n  // keep me\n]\n');
-      final before = tasksFile.readAsStringSync();
-      final result = await cli(['init'], cwd: project.path, expectExit: 9);
-      expect(tasksFile.readAsStringSync(), before);
-      expect(result.combined, contains('tasks.json'));
-    });
+    test(
+      'init merges into a tasks.json with comments and keeps them',
+      () async {
+        final project = flutterProject();
+        final tasksFile = File(p.join(project.path, '.zed', 'tasks.json'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('// my tasks\n[\n  // keep me\n]\n');
+        await cli(['init'], cwd: project.path, expectExit: 0);
+        final after = tasksFile.readAsStringSync();
+        expect(after, startsWith('// my tasks\n'));
+        expect(after, contains('// keep me'));
+        expect(after, contains('"label": "Flutter: Hot Reload"'));
+      },
+    );
 
     test('status with no sessions exits 0', () async {
       final result = await cli(['status'], expectExit: 0);

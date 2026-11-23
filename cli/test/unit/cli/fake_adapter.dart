@@ -38,9 +38,9 @@ Future<void> main(List<String> args) async {
         RegExp(r'Content-Length: (\d+)').firstMatch(text)!.group(1)!,
       );
       if (buffer.length < end + 4 + length) break;
-      final request =
-          jsonDecode(utf8.decode(buffer.sublist(end + 4, end + 4 + length)))
-              as Map<String, Object?>;
+      final request = jsonDecode(
+        utf8.decode(buffer.sublist(end + 4, end + 4 + length)),
+      ) as Map<String, Object?>;
       buffer.removeRange(0, end + 4 + length);
       if (request['type'] != 'request') continue;
       switch (request['command']) {

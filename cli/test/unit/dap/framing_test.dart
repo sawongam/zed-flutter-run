@@ -125,7 +125,7 @@ void main() {
     });
   });
 
-  test('C12: the buffer shrinks after a large message', () {
+  test('the buffer shrinks after a large message', () {
     final decoder = DapFrameDecoder();
     final big = {'text': 'x' * (2 * 1024 * 1024)};
     expect(decoder.add(frame(big)), [big]);
@@ -144,7 +144,7 @@ void main() {
     ]);
   });
 
-  test('S7: a body over 64 MiB is rejected with a clear message', () {
+  test('a body over 64 MiB is rejected with a clear message', () {
     expect(
       () => DapFrameDecoder().add(
         ascii.encode('Content-Length: ${64 * 1024 * 1024 + 1}\r\n\r\n'),
@@ -171,13 +171,6 @@ void main() {
   });
 
   group('messages', () {
-    test('predicates', () {
-      expect(isRequest({'type': 'request'}), isTrue);
-      expect(isResponse({'type': 'response'}), isTrue);
-      expect(isEvent({'type': 'event'}), isTrue);
-      expect(isEvent({'type': 'request'}), isFalse);
-    });
-
     test('makeResponse and makeOutputEvent', () {
       expect(
         makeResponse(

@@ -12,8 +12,7 @@ import 'version.dart';
 String canonicalDirectory(String path, HostEnvironment env) {
   final ctx = env.pathContext;
   var result = ctx.normalize(ctx.absolute(path));
-  final isHost = env.os == HostEnvironment.system().os;
-  if (isHost) {
+  if (env.os == HostOs.current) {
     try {
       if (Directory(result).existsSync()) {
         result = ctx.normalize(Directory(result).resolveSymbolicLinksSync());
@@ -52,15 +51,19 @@ String? findProjectRoot(String startDir, HostEnvironment env) {
 
 /// Searches [startDir] and its ancestors for [relativePath]; returns the full
 /// path of the first hit (files, directories and links count), else null.
-String? findUpwards(String startDir, String relativePath, HostEnvironment env) {
+/// [exists] replaces the file system check (a test seam).
+String? findUpwards(
+  String startDir,
+  String relativePath,
+  HostEnvironment env, {
+  bool Function(String path)? exists,
+}) {
   final ctx = env.pathContext;
+  final present = exists ?? _exists;
   var dir = ctx.normalize(ctx.absolute(startDir));
   while (true) {
     final candidate = ctx.join(dir, relativePath);
-    if (FileSystemEntity.typeSync(candidate, followLinks: false) !=
-        FileSystemEntityType.notFound) {
-      return candidate;
-    }
+    if (present(candidate)) return candidate;
     final parent = ctx.dirname(dir);
     if (parent == dir) return null;
     dir = parent;
@@ -83,7 +86,7 @@ String? findExecutableOnPath(
   final pathValue = env.env('PATH');
   if (pathValue == null || pathValue.isEmpty || name.isEmpty) return null;
   final ctx = env.pathContext;
-  final check = isExecutableFile ?? (path) => _isExecutableFile(path, env);
+  final check = isExecutableFile ?? (path) => isExecutableFileAt(path, env);
   final separator = env.isWindows ? ';' : ':';
 
   var extensions = <String>[''];
@@ -95,7 +98,7 @@ String? findExecutableOnPath(
         .where((e) => e.isNotEmpty)
         .toList();
     final lowerName = name.toLowerCase();
-    final hasKnownExtension = listed.any((e) => lowerName.endsWith(e));
+    final hasKnownExtension = listed.any(lowerName.endsWith);
     extensions = hasKnownExtension ? <String>['', ...listed] : listed;
   }
 
@@ -113,7 +116,14 @@ String? findExecutableOnPath(
   return null;
 }
 
-bool _isExecutableFile(String path, HostEnvironment env) {
+/// True for a file, directory or (possibly broken) link; links not followed.
+bool _exists(String path) =>
+    FileSystemEntity.typeSync(path, followLinks: false) !=
+    FileSystemEntityType.notFound;
+
+/// True when [path] is a regular file that can be run: any execute bit on
+/// POSIX, any file on Windows.
+bool isExecutableFileAt(String path, HostEnvironment env) {
   try {
     final stat = FileStat.statSync(path);
     if (stat.type != FileSystemEntityType.file) return false;
@@ -148,7 +158,6 @@ String stateBaseDirectory(HostEnvironment env) {
   }
   throw const FlutterRunException(
     'Could not find a folder for flutter_run state files.',
-    hint:
-        'Set the FLUTTER_RUN_STATE_DIR environment variable to a writable folder.',
+    hint: 'Set the FLUTTER_RUN_STATE_DIR environment variable to a writable folder.',
   );
 }

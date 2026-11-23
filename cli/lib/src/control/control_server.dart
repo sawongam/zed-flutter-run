@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../common/clock.dart';
 import '../common/json_types.dart';
 import '../common/logger.dart';
 import '../common/version.dart';
@@ -25,12 +26,13 @@ bool constantTimeEquals(String a, String b) {
 
 /// Loopback-only control server: one JSON request line per connection, a
 /// token on every request, a fixed command set.
-class ControlServer {
+class ControlServer implements ControlEndpoint {
   ControlServer._(
     this._server,
     this._control,
     this._logger,
     this._requestLineTimeout,
+    this._clock,
     this.token,
   );
 
@@ -52,6 +54,7 @@ class ControlServer {
     Logger? logger,
     Duration requestLineTimeout = const Duration(seconds: 3),
     String? tokenOverrideForTests,
+    Clock clock = const SystemClock(),
   }) async {
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final instance = ControlServer._(
@@ -59,6 +62,7 @@ class ControlServer {
       control,
       logger ?? Logger.silent(),
       requestLineTimeout,
+      clock,
       tokenOverrideForTests ?? _generateToken(),
     );
     server.listen(instance._accept, onError: (Object _) {});
@@ -69,17 +73,21 @@ class ControlServer {
   final SessionControl _control;
   final Logger _logger;
   final Duration _requestLineTimeout;
+  final Clock _clock;
   final Set<_Connection> _connections = {};
   bool _closed = false;
 
   /// Base64url (no padding) of 32 random bytes.
+  @override
   final String token;
 
+  @override
   int get port => _server.port;
 
   /// Connections currently open (for tests and diagnostics).
   int get connectionCount => _connections.length;
 
+  @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
@@ -115,13 +123,12 @@ class ControlServer {
   Future<void> _rejectBusy(Socket socket) async {
     try {
       socket.add(
-        utf8.encode(
-          '${jsonEncode({
-            'v': controlProtocolVersion,
-            'id': null,
-            'ok': false,
-            'error': {'code': ControlErrorCode.busy.wire, 'message': 'The session has too many open connections.'},
-          })}\n',
+        _encodeReply(
+          null,
+          error: const ControlException(
+            ControlErrorCode.busy,
+            'The session has too many open connections.',
+          ),
         ),
       );
       await socket.flush().timeout(const Duration(seconds: 1));
@@ -148,20 +155,28 @@ class ControlServer {
     }
   }
 
-  Future<Json> _dispatch(String command, Json args) async {
-    switch (command) {
-      case 'ping':
-        return _control.ping();
-      case 'reload':
-        return _control.reload(args);
-      case 'restart':
-        return _control.restart(args);
-    }
-    throw ControlException(
-      ControlErrorCode.unknownCommand,
-      'Unknown command "$command".',
-    );
-  }
+  /// The fixed command set: the one place a new command is added.
+  late final Map<String, Future<Json> Function(Json args)> _handlers = {
+    'ping': (_) async => _control.ping(),
+    'reload': _control.reload,
+    'restart': _control.restart,
+  };
+}
+
+/// One reply line: the result, or the error when [error] is set.
+List<int> _encodeReply(Object? id, {Json? result, ControlException? error}) {
+  final body = <String, Object?>{
+    'v': controlProtocolVersion,
+    'id': id,
+    if (error == null) ...{
+      'ok': true,
+      'result': result ?? <String, Object?>{},
+    } else ...{
+      'ok': false,
+      'error': {'code': error.code.wire, 'message': error.message},
+    },
+  };
+  return utf8.encode('${jsonEncode(body)}\n');
 }
 
 class _Connection {
@@ -179,7 +194,7 @@ class _Connection {
   bool _destroyed = false;
 
   void start() {
-    _lineTimer = Timer(_owner._requestLineTimeout, () {
+    _lineTimer = _owner._clock.timer(_owner._requestLineTimeout, () {
       _owner._logger.debug('control: closing a connection that sent no line');
       destroy();
     });
@@ -196,7 +211,8 @@ class _Connection {
     _destroyed = true;
     _lineTimer?.cancel();
     _graceTimer?.cancel();
-    _subscription?.cancel();
+    // The socket is destroyed right after; nothing depends on the cancel.
+    unawaited(_subscription?.cancel());
     _socket.destroy();
     _owner._connections.remove(this);
   }
@@ -219,7 +235,7 @@ class _Connection {
           null,
           error: const ControlException(
             ControlErrorCode.payloadTooLarge,
-            'The request is larger than 65536 bytes.',
+            'The request is larger than $maxControlLineBytes bytes.',
           ),
         ),
       );
@@ -259,13 +275,13 @@ class _Connection {
         );
       }
       final rawId = decoded['id'];
-      if (rawId == null || rawId is int || rawId is String) id = rawId;
       if (rawId != null && rawId is! int && rawId is! String) {
         throw const ControlException(
           ControlErrorCode.badRequest,
           '"id" must be a number or a string.',
         );
       }
+      id = rawId;
       final version = decoded['v'];
       if (version is! int) {
         throw const ControlException(
@@ -287,7 +303,8 @@ class _Connection {
           '"command" must be a string.',
         );
       }
-      if (!controlCommands.contains(command)) {
+      final handler = _owner._handlers[command];
+      if (handler == null) {
         throw ControlException(
           ControlErrorCode.unknownCommand,
           'Unknown command "$command".',
@@ -303,7 +320,7 @@ class _Connection {
       final args = rawArgs == null
           ? <String, Object?>{}
           : Map<String, Object?>.of(rawArgs as Map<String, Object?>);
-      final result = await _owner._dispatch(command, args);
+      final result = await handler(args);
       _owner._logger.debug('control: $command ok');
       await _respond(id, result: result);
     } on ControlException catch (e) {
@@ -328,23 +345,12 @@ class _Connection {
   }) async {
     if (_responded || _destroyed) return;
     _responded = true;
-    final body = <String, Object?>{
-      'v': controlProtocolVersion,
-      'id': id,
-      if (error == null) ...{
-        'ok': true,
-        'result': result ?? <String, Object?>{},
-      } else ...{
-        'ok': false,
-        'error': {'code': error.code.wire, 'message': error.message},
-      },
-    };
     try {
-      _socket.add(utf8.encode('${jsonEncode(body)}\n'));
+      _socket.add(_encodeReply(id, result: result, error: error));
       await _socket.flush();
       // Half-close and keep draining, so a client that is still sending does
       // not get a reset that would discard our answer.
-      _graceTimer = Timer(const Duration(seconds: 2), destroy);
+      _graceTimer = _owner._clock.timer(const Duration(seconds: 2), destroy);
       await _socket.close();
     } on Object {
       destroy();

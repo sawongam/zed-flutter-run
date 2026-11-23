@@ -1,0 +1,8 @@
+# Single source of truth for the Rust toolchain used locally and in CI.
+# Bump deliberately (and update the dtolnay/rust-toolchain SHA in
+# .github/workflows/*.yml, whose commit is named after this version).
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-wasip2"]
+profile = "minimal"

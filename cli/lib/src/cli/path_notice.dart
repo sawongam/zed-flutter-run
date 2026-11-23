@@ -25,7 +25,7 @@ const String _tasks =
     '"Open DevTools"';
 
 /// The text of the one-time console notice (shown as a warning) for a
-/// `flutter_run` that is not on the PATH (ADR 0006 D1).
+/// `flutter_run` that is not on the PATH.
 ///
 /// [isCompiledExe] is false when this process runs from source
 /// (`dart run`), in which case there is no folder to add to the PATH.

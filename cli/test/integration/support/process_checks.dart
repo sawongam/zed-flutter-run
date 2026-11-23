@@ -114,9 +114,10 @@ Future<Map<int, String>> commandLines(Iterable<int> pids) async {
       out[pid] = (r.stdout as String).trim();
     } else if (Platform.isLinux) {
       try {
-        out[pid] = File(
-          '/proc/$pid/cmdline',
-        ).readAsStringSync().replaceAll('\u0000', ' ').trim();
+        out[pid] = File('/proc/$pid/cmdline')
+            .readAsStringSync()
+            .replaceAll('\u0000', ' ')
+            .trim();
       } on FileSystemException {
         out[pid] = '';
       }

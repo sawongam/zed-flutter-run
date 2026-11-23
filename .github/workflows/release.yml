@@ -1,33 +1,58 @@
-# Release BUILD workflow. It builds artifacts only. It NEVER publishes anything:
-# no GitHub release, no pub.dev, no crates.io, no Homebrew, no Scoop, no Zed registry.
+# Release workflow. Runs when a push to prod changes cli/pubspec.yaml to a
+# version that has no release yet, or by hand (workflow_dispatch). It builds the
+# binaries, writes SHA256SUMS, attests them, then creates the git tag vX.Y.Z and
+# the GitHub release. If the release already exists, every job after `version` is
+# skipped, so ordinary pushes do nothing.
 #
-# Triggered by pushing a tag `v*` or manually (workflow_dispatch). Result: one
-# workflow artifact per platform plus `SHA256SUMS`, downloadable from the run page.
-#
-# Human release steps (see docs/RELEASE.md for the full, authoritative list):
-#   1. Bump versions (.github/scripts/check-versions.sh must pass), tag vX.Y.Z.
-#   2. Run this workflow; download the artifacts and SHA256SUMS from the run.
-#   3. Create the GitHub release yourself and upload the files there.
-#   4. Run .github/scripts/pin-checksums.sh SHA256SUMS > extension/src/checksums.rs
-#      and commit it (flip PUBLISHED_ON_PUB only after pub.dev publication).
-#   5. Submit the extension / publish packages by hand (next commit, not the tag commit).
+# No pub.dev (see publish-pub.yml), crates.io, Homebrew, Scoop or Zed registry
+# publishing happens here. After the release, pin the checksums into the
+# extension: see docs/RELEASE.md.
 name: Release build
 
 on:
   push:
-    tags: ["v*"]
+    branches: [prod]
+    paths: ["cli/pubspec.yaml"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
+  version:
+    name: Read version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      new: ${{ steps.v.outputs.new }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Versions agree and the release does not exist yet
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sh .github/scripts/check-versions.sh
+          ver=$(sed -n 's/^version:[[:space:]]*\([0-9][^[:space:]#]*\).*/\1/p' cli/pubspec.yaml | head -n 1)
+          echo "tag=v$ver" >> "$GITHUB_OUTPUT"
+          if gh release view "v$ver" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "Release v$ver already exists, nothing to do."
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build ${{ matrix.target }}
+    needs: [version]
+    if: needs.version.outputs.new == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -44,10 +69,11 @@ jobs:
         shell: bash
         working-directory: cli
     steps:
-      # workflow_dispatch runs on a branch: slashes in the ref name are replaced.
       - name: Compute asset name
-        run: echo "ASSET=flutter_run-$(echo "$GITHUB_REF_NAME" | tr '/' '-')-${{ matrix.target }}${{ matrix.ext }}" >> "$GITHUB_ENV"
+        run: echo "ASSET=flutter_run-${{ needs.version.outputs.tag }}-${{ matrix.target }}${{ matrix.ext }}" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
           sdk: stable
@@ -87,3 +113,66 @@ jobs:
           path: dist/SHA256SUMS
           retention-days: 30
           if-no-files-found: error
+
+  attest:
+    name: Build provenance
+    needs: [checksums]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write       # sign the attestation with the workflow's OIDC identity
+      attestations: write   # store it in the repository's attestations
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - run: ls -l dist
+      - name: Attest build provenance (flutter_run-* binaries and SHA256SUMS)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/flutter_run-*
+            dist/SHA256SUMS
+
+  publish-github-release:
+    name: GitHub release
+    needs: [version, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # create the tag and the release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          ver="${TAG#v}"
+          awk -v ver="$ver" '
+            /^## \[/ { if (on) exit; if (index($0, "## [" ver "]") == 1) { on = 1; next } }
+            on { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::No section '## [$ver]' with content in CHANGELOG.md"
+            exit 1
+          fi
+          cat release-notes.md
+      - name: Create release (and the tag, on this commit)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          ls -l dist
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes-file release-notes.md

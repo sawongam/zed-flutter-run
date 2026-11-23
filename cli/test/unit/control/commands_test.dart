@@ -402,34 +402,31 @@ void main() {
       });
     });
 
-    test(
-      'waiting notice appears once after 3 s, not before, not for fast replies',
-      () {
-        fakeAsync((async) {
-          final h = Harness(
-            [record(1), record(2, root: '/work/app/b')],
-            FakeClient((_, _, _) async {
-              await Future<void>.delayed(const Duration(seconds: 10));
-              return okReply();
-            }),
-          );
-          int? code;
-          h.run(['reload']).then((c) => code = c);
-          async.flushMicrotasks();
-          async.elapse(const Duration(milliseconds: 2999));
-          expect(waiting(h), isEmpty);
-          async.elapse(const Duration(milliseconds: 2));
-          const notice =
-              'Waiting... the app may be paused at a breakpoint (Ctrl+C to stop waiting).';
-          expect(waiting(h), [notice]);
-          async.elapse(const Duration(seconds: 10));
-          async.flushMicrotasks();
-          expect(code, 0);
-          expect(waiting(h), [notice]);
-          expect(h.console.outLines, hasLength(2));
-        });
-      },
-    );
+    test('waiting notice appears once after 3 s, not before, not for fast replies', () {
+      fakeAsync((async) {
+        final h = Harness(
+          [record(1), record(2, root: '/work/app/b')],
+          FakeClient((_, _, _) async {
+            await Future<void>.delayed(const Duration(seconds: 10));
+            return okReply();
+          }),
+        );
+        int? code;
+        h.run(['reload']).then((c) => code = c);
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 2999));
+        expect(waiting(h), isEmpty);
+        async.elapse(const Duration(milliseconds: 2));
+        const notice =
+            'Waiting... the app may be paused at a breakpoint (Ctrl+C to stop waiting).';
+        expect(waiting(h), [notice]);
+        async.elapse(const Duration(seconds: 10));
+        async.flushMicrotasks();
+        expect(code, 0);
+        expect(waiting(h), [notice]);
+        expect(h.console.outLines, hasLength(2));
+      });
+    });
 
     test('no waiting notice when the reply is quick', () {
       fakeAsync((async) {

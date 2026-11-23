@@ -381,12 +381,7 @@ void main() {
           ),
         )
         ..addCommand(
-          EmulatorsCommand(
-            runnerFor: runnerFor,
-            store: store,
-            env: e,
-            console: c,
-          ),
+          EmulatorsCommand(runnerFor: runnerFor, env: e, console: c),
         );
       try {
         return (code: await runner.run(args) ?? 0, error: null, hint: null);
@@ -509,7 +504,7 @@ void main() {
       });
 
       test('timeout mentions the startup lock', () async {
-        responder = (_) => throw TimeoutException('slow');
+        responder = (_) => throw const ToolTimeoutException('slow');
         final r = await exec(['devices']);
         expect(r.code, 10);
         expect(r.error, contains('startup lock'));
@@ -527,8 +522,8 @@ void main() {
         expect(r.code, 0);
         expect(store.readSync(project)!.deviceId, 'chrome');
         expect(console.outLines, [
-          'Saved device: Chrome (chrome). It is used the next time you start '
-              'the app. The running app keeps its device.',
+          ('Saved device: Chrome (chrome). It is used the next time you start '
+              'the app. The running app keeps its device.'),
           'Start the app from the debugger (F4 opens the picker in Zed).',
         ]);
       });

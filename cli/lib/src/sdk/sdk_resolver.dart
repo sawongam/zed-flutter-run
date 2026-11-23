@@ -17,8 +17,8 @@ class FlutterSdk {
     required this.flutterExecutable,
     required this.sourceStep,
     this.bundledDartExecutable,
-    SdkFileSystem fileSystem = const LocalSdkFileSystem(),
-  }) : _fs = fileSystem;
+    SdkFileSystem? fileSystem,
+  }) : _fs = fileSystem ?? LocalSdkFileSystem();
 
   /// Null for shims that cannot be traced back to an SDK folder.
   final String? root;
@@ -48,7 +48,7 @@ class FlutterSdk {
         return decoded['frameworkVersion'] as String;
       }
     } on FormatException {
-      // Ignore.
+      // Malformed cache file: no version.
     }
     return null;
   }
@@ -93,15 +93,18 @@ class SdkResolution {
   }
 }
 
+/// How to point flutter_run at an SDK when none was found.
+const String sdkSearchHint =
+    'Set flutterSdkPath in the launch entry (or pass --flutter-sdk), set the '
+    'FLUTTER_RUN_FLUTTER_SDK environment variable, or put flutter on your '
+    'PATH.';
+
 final RegExp _versionPattern = RegExp(r'^[A-Za-z0-9_@\-][A-Za-z0-9._@\-]*$');
 
 class SdkResolver {
-  SdkResolver(
-    this.env, {
-    Logger? logger,
-    SdkFileSystem fileSystem = const LocalSdkFileSystem(),
-  }) : _logger = logger ?? Logger.silent(),
-       _fs = fileSystem;
+  SdkResolver(this.env, {Logger? logger, SdkFileSystem? fileSystem})
+    : _logger = logger ?? Logger.silent(),
+      _fs = fileSystem ?? LocalSdkFileSystem(env);
 
   final HostEnvironment env;
   final Logger _logger;
@@ -118,18 +121,16 @@ class SdkResolver {
     bool strictFvm = false,
   }) async {
     final trace = <ResolutionStep>[];
-    final fatalExplicit = kind == SdkKind.flutter;
     final sdk = _walkFlutter(
       projectDir,
       explicitSdkPath,
       strictFvm,
       trace,
-      fatalExplicit: fatalExplicit,
+      fatalExplicit: kind == SdkKind.flutter,
     );
-    if (kind == SdkKind.flutter) {
-      return SdkResolution(flutter: sdk, trace: List.unmodifiable(trace));
-    }
-    final dart = _resolveDart(sdk, strictFvm, trace);
+    final dart = kind == SdkKind.dart
+        ? _resolveDart(sdk, strictFvm, trace)
+        : null;
     return SdkResolution(
       flutter: sdk,
       dartExecutable: dart,
@@ -162,28 +163,23 @@ class SdkResolver {
     if (explicitBad && kind == SdkKind.flutter) {
       headline =
           'The Flutter SDK folder you configured does not contain ${_ctx.join('bin', _flutterBin)}.';
-      hint =
-          'Fix the flutterSdkPath setting (or the --flutter-sdk option) so it points to the root of a Flutter SDK, or remove it to let flutter_run search.';
+      hint = 'Fix the flutterSdkPath setting (or the --flutter-sdk option) so it points to the root of a Flutter SDK, or remove it to let flutter_run search.';
     } else if (strictFvm) {
-      headline =
-          'No Flutter SDK was found through fvm for this project, and fvm is required (useFvm).';
-      hint =
-          'Run "fvm use" in the project so that .fvm/flutter_sdk exists, install the version listed in .fvmrc, or turn off useFvm.';
+      headline = 'No Flutter SDK was found through fvm for this project, and fvm is required (useFvm).';
+      hint = 'Run "fvm use" in the project so that .fvm/flutter_sdk exists, install the version listed in .fvmrc, or turn off useFvm.';
     } else {
       headline = 'Could not find a $what SDK.';
-      hint =
-          'Set flutterSdkPath in the launch entry (or pass --flutter-sdk), set the FLUTTER_RUN_FLUTTER_SDK environment variable, or put flutter on your PATH.';
+      hint = sdkSearchHint;
     }
-    final tried = [for (final s in result.trace) s.toString()];
     throw SdkNotFoundException(
       '$headline\nLocations that were tried:\n${result.describeTrace()}',
-      tried: tried,
       hint: hint,
     );
   }
 
   // ---------------------------------------------------------------- flutter
 
+  /// Walks the lookup order; every step adds one entry to [trace].
   FlutterSdk? _walkFlutter(
     String projectDir,
     String? explicit,
@@ -196,309 +192,283 @@ class SdkResolver {
       return sdk;
     }
 
-    // 1. explicit
-    const explicitDesc = 'Option --flutter-sdk / setting flutterSdkPath';
-    if (explicit == null || explicit.trim().isEmpty) {
-      trace.add(
-        const ResolutionStep(
-          'explicit',
-          explicitDesc,
+    final byOption = _namedRoot(
+      trace,
+      'explicit',
+      'Option --flutter-sdk / setting flutterSdkPath',
+      explicit,
+      relativeTo: projectDir,
+    );
+    if (byOption != null) return done(byOption);
+    // A path the user configured explicitly must not fall back silently.
+    if (fatalExplicit && trace.last.outcome == StepOutcome.invalid) return null;
+
+    final byEnv = _namedRoot(
+      trace,
+      'env',
+      'Environment variable FLUTTER_RUN_FLUTTER_SDK',
+      env.env('FLUTTER_RUN_FLUTTER_SDK'),
+    );
+    if (byEnv != null) return done(byEnv);
+
+    final byLink = _fvmLink(projectDir, trace);
+    if (byLink != null) return done(byLink);
+
+    final version = _fvmVersion(projectDir, trace);
+    final byCache = _fvmCache(version, trace);
+    if (byCache != null) return done(byCache);
+
+    if (strict) {
+      const why = 'useFvm is on, so only fvm sources are used';
+      trace.addAll(const [
+        ResolutionStep('puro', 'puro environment', StepOutcome.skipped, why),
+        ResolutionStep(
+          'flutter-root',
+          'Environment variable FLUTTER_ROOT',
           StepOutcome.skipped,
-          'not set',
+          why,
         ),
-      );
-    } else {
-      final explicitPath = _ctx.normalize(
-        _ctx.isAbsolute(explicit.trim())
-            ? explicit.trim()
-            : _ctx.join(_ctx.absolute(projectDir), explicit.trim()),
-      );
-      final sdk = _fromRoot(explicitPath, 'explicit');
-      if (sdk != null) {
-        trace.add(
-          ResolutionStep('explicit', explicitDesc, StepOutcome.found, sdk.root),
-        );
-        return done(sdk);
-      }
-      trace.add(
-        ResolutionStep(
-          'explicit',
-          explicitDesc,
-          StepOutcome.invalid,
-          '${explicit.trim()} has no ${_ctx.join('bin', _flutterBin)}',
-        ),
-      );
-      if (fatalExplicit) return null;
+        ResolutionStep('path', 'flutter on PATH', StepOutcome.skipped, why),
+      ]);
+      return null;
     }
 
-    // 2. env
-    const envDesc = 'Environment variable FLUTTER_RUN_FLUTTER_SDK';
-    final fromEnv = env.env('FLUTTER_RUN_FLUTTER_SDK');
-    if (fromEnv == null || fromEnv.trim().isEmpty) {
-      trace.add(
-        const ResolutionStep('env', envDesc, StepOutcome.skipped, 'not set'),
-      );
-    } else {
-      final sdk = _fromRoot(fromEnv.trim(), 'env');
-      if (sdk != null) {
-        trace.add(ResolutionStep('env', envDesc, StepOutcome.found, sdk.root));
-        return done(sdk);
-      }
-      trace.add(
-        ResolutionStep(
-          'env',
-          envDesc,
-          StepOutcome.invalid,
-          '${fromEnv.trim()} has no ${_ctx.join('bin', _flutterBin)}',
-        ),
-      );
-    }
+    final byPuro = _puro(projectDir, trace);
+    if (byPuro != null) return done(byPuro);
 
-    // 3. fvm-link
-    const linkDesc = 'fvm link .fvm/flutter_sdk in the project or a parent';
+    final byFlutterRoot = _namedRoot(
+      trace,
+      'flutter-root',
+      'Environment variable FLUTTER_ROOT',
+      env.env('FLUTTER_ROOT'),
+    );
+    if (byFlutterRoot != null) return done(byFlutterRoot);
+
+    return done(_flutterOnPath(trace));
+  }
+
+  /// A step whose value is the path of an SDK root: the `--flutter-sdk`
+  /// option, `FLUTTER_RUN_FLUTTER_SDK` or `FLUTTER_ROOT`. A relative [value]
+  /// is taken relative to [relativeTo].
+  FlutterSdk? _namedRoot(
+    List<ResolutionStep> trace,
+    String id,
+    String description,
+    String? value, {
+    String? relativeTo,
+  }) {
+    final path = value?.trim() ?? '';
+    if (path.isEmpty) {
+      trace.add(
+        ResolutionStep(id, description, StepOutcome.skipped, 'not set'),
+      );
+      return null;
+    }
+    final root = relativeTo == null || _ctx.isAbsolute(path)
+        ? path
+        : _ctx.join(_ctx.absolute(relativeTo), path);
+    final sdk = _fromRoot(root, id);
+    trace.add(
+      sdk != null
+          ? ResolutionStep(id, description, StepOutcome.found, sdk.root)
+          : ResolutionStep(
+              id,
+              description,
+              StepOutcome.invalid,
+              '$path has no ${_ctx.join('bin', _flutterBin)}',
+            ),
+    );
+    return sdk;
+  }
+
+  FlutterSdk? _fvmLink(String projectDir, List<ResolutionStep> trace) {
+    const description = 'fvm link .fvm/flutter_sdk in the project or a parent';
     final link = _findUp(projectDir, _ctx.join('.fvm', 'flutter_sdk'));
     if (link == null) {
       trace.add(
-        const ResolutionStep('fvm-link', linkDesc, StepOutcome.notFound),
+        const ResolutionStep('fvm-link', description, StepOutcome.notFound),
       );
-    } else {
-      final target = _fs.resolveLink(link);
-      final sdk = target == null ? null : _fromRoot(target, 'fvm-link');
-      if (sdk != null) {
-        trace.add(
-          ResolutionStep('fvm-link', linkDesc, StepOutcome.found, sdk.root),
-        );
-        return done(sdk);
-      }
-      trace.add(
-        ResolutionStep(
-          'fvm-link',
-          linkDesc,
-          StepOutcome.invalid,
-          '$link does not lead to a Flutter SDK (target: ${target ?? 'unreadable'})',
-        ),
-      );
+      return null;
     }
+    final target = _fs.resolveLink(link);
+    final sdk = target == null ? null : _fromRoot(target, 'fvm-link');
+    trace.add(
+      sdk != null
+          ? ResolutionStep('fvm-link', description, StepOutcome.found, sdk.root)
+          : ResolutionStep(
+              'fvm-link',
+              description,
+              StepOutcome.invalid,
+              '$link does not lead to a Flutter SDK '
+                  '(target: ${target ?? 'unreadable'})',
+            ),
+    );
+    return sdk;
+  }
 
-    // 4 / 4b. fvm version files
-    String? version;
-    const rcDesc = 'fvm file .fvmrc in the project or a parent';
-    final rc = _findUp(projectDir, '.fvmrc');
-    if (rc == null) {
-      trace.add(const ResolutionStep('fvmrc', rcDesc, StepOutcome.notFound));
-    } else {
-      final v = _jsonString(_fs.readText(rc), 'flutter');
-      if (v != null && _versionPattern.hasMatch(v)) {
-        version = v;
-        trace.add(
-          ResolutionStep(
-            'fvmrc',
-            rcDesc,
-            StepOutcome.found,
-            'version $v (SDK is looked up in the fvm cache)',
-          ),
-        );
-      } else {
-        trace.add(
-          ResolutionStep(
-            'fvmrc',
-            rcDesc,
-            StepOutcome.invalid,
-            '$rc has no usable "flutter" version',
-          ),
-        );
-      }
-    }
-    const legacyDesc =
+  /// The fvm version from `.fvmrc`, else from the legacy
+  /// `.fvm/fvm_config.json`; null when neither names one.
+  String? _fvmVersion(String projectDir, List<ResolutionStep> trace) {
+    final fromRc = _versionFile(
+      trace,
+      projectDir,
+      id: 'fvmrc',
+      description: 'fvm file .fvmrc in the project or a parent',
+      relative: '.fvmrc',
+      key: 'flutter',
+    );
+    const legacyDescription =
         'fvm file .fvm/fvm_config.json in the project or a parent';
-    if (version != null) {
+    if (fromRc != null) {
       trace.add(
         const ResolutionStep(
           'fvm-legacy',
-          legacyDesc,
+          legacyDescription,
           StepOutcome.skipped,
           'a version came from .fvmrc',
         ),
       );
-    } else {
-      final legacy = _findUp(projectDir, _ctx.join('.fvm', 'fvm_config.json'));
-      if (legacy == null) {
-        trace.add(
-          const ResolutionStep('fvm-legacy', legacyDesc, StepOutcome.notFound),
-        );
-      } else {
-        final v = _jsonString(_fs.readText(legacy), 'flutterSdkVersion');
-        if (v != null && _versionPattern.hasMatch(v)) {
-          version = v;
-          trace.add(
-            ResolutionStep(
-              'fvm-legacy',
-              legacyDesc,
-              StepOutcome.found,
-              'version $v (SDK is looked up in the fvm cache)',
-            ),
-          );
-        } else {
-          trace.add(
-            ResolutionStep(
-              'fvm-legacy',
-              legacyDesc,
-              StepOutcome.invalid,
-              '$legacy has no usable "flutterSdkVersion"',
-            ),
-          );
-        }
-      }
+      return fromRc;
     }
+    return _versionFile(
+      trace,
+      projectDir,
+      id: 'fvm-legacy',
+      description: legacyDescription,
+      relative: _ctx.join('.fvm', 'fvm_config.json'),
+      key: 'flutterSdkVersion',
+    );
+  }
 
-    // 5. fvm-cache
-    const cacheDesc = 'fvm cache (FVM_CACHE_PATH, FVM_HOME or the home folder)';
+  String? _versionFile(
+    List<ResolutionStep> trace,
+    String projectDir, {
+    required String id,
+    required String description,
+    required String relative,
+    required String key,
+  }) {
+    final file = _findUp(projectDir, relative);
+    if (file == null) {
+      trace.add(ResolutionStep(id, description, StepOutcome.notFound));
+      return null;
+    }
+    final version = _jsonString(_fs.readText(file), key);
+    if (version != null && _versionPattern.hasMatch(version)) {
+      trace.add(
+        ResolutionStep(
+          id,
+          description,
+          StepOutcome.found,
+          'version $version (SDK is looked up in the fvm cache)',
+        ),
+      );
+      return version;
+    }
+    trace.add(
+      ResolutionStep(
+        id,
+        description,
+        StepOutcome.invalid,
+        '$file has no usable "$key"',
+      ),
+    );
+    return null;
+  }
+
+  FlutterSdk? _fvmCache(String? version, List<ResolutionStep> trace) {
+    const description =
+        'fvm cache (FVM_CACHE_PATH, FVM_HOME or the home folder)';
     if (version == null) {
       trace.add(
         const ResolutionStep(
           'fvm-cache',
-          cacheDesc,
+          description,
           StepOutcome.skipped,
           'no fvm version file found',
         ),
       );
-    } else {
-      final candidates = fvmCacheCandidates(version);
-      FlutterSdk? found;
-      for (final c in candidates) {
-        found = _fromRoot(c, 'fvm-cache');
-        if (found != null) break;
-      }
-      if (found != null) {
-        trace.add(
-          ResolutionStep('fvm-cache', cacheDesc, StepOutcome.found, found.root),
-        );
-        return done(found);
-      }
-      trace.add(
-        ResolutionStep(
-          'fvm-cache',
-          cacheDesc,
-          StepOutcome.notFound,
-          'version $version is not installed in: ${candidates.join(', ')}',
-        ),
-      );
-    }
-
-    if (strict) {
-      const why = 'useFvm is on, so only fvm sources are used';
-      trace
-        ..add(
-          const ResolutionStep(
-            'puro',
-            'puro environment',
-            StepOutcome.skipped,
-            why,
-          ),
-        )
-        ..add(
-          const ResolutionStep(
-            'flutter-root',
-            'Environment variable FLUTTER_ROOT',
-            StepOutcome.skipped,
-            why,
-          ),
-        )
-        ..add(
-          const ResolutionStep(
-            'path',
-            'flutter on PATH',
-            StepOutcome.skipped,
-            why,
-          ),
-        );
       return null;
     }
-
-    // 6. puro
-    const puroDesc = 'puro file .puro.json in the project or a parent';
-    final puroFile = _findUp(projectDir, '.puro.json');
-    if (puroFile == null) {
-      trace.add(const ResolutionStep('puro', puroDesc, StepOutcome.notFound));
-    } else {
-      final name = _jsonString(_fs.readText(puroFile), 'env');
-      if (name == null || !_versionPattern.hasMatch(name)) {
-        trace.add(
-          ResolutionStep(
-            'puro',
-            puroDesc,
-            StepOutcome.invalid,
-            '$puroFile has no usable "env" name',
-          ),
-        );
-      } else {
-        final rootEnv = env.env('PURO_ROOT');
-        final base = (rootEnv != null && rootEnv.isNotEmpty)
-            ? rootEnv
-            : (env.home == null ? null : _ctx.join(env.home!, '.puro'));
-        final sdk = base == null
-            ? null
-            : _fromRoot(_ctx.join(base, 'envs', name, 'flutter'), 'puro');
-        if (sdk != null) {
-          trace.add(
-            ResolutionStep('puro', puroDesc, StepOutcome.found, sdk.root),
-          );
-          return done(sdk);
-        }
-        trace.add(
-          ResolutionStep(
-            'puro',
-            puroDesc,
-            StepOutcome.notFound,
-            base == null
-                ? 'no home folder and PURO_ROOT is not set'
-                : 'environment "$name" is not installed under $base',
-          ),
-        );
-      }
-    }
-
-    // 7. FLUTTER_ROOT
-    const rootDesc = 'Environment variable FLUTTER_ROOT';
-    final flutterRoot = env.env('FLUTTER_ROOT');
-    if (flutterRoot == null || flutterRoot.trim().isEmpty) {
-      trace.add(
-        const ResolutionStep(
-          'flutter-root',
-          rootDesc,
-          StepOutcome.skipped,
-          'not set',
-        ),
-      );
-    } else {
-      final sdk = _fromRoot(flutterRoot.trim(), 'flutter-root');
+    final candidates = fvmCacheCandidates(version);
+    for (final candidate in candidates) {
+      final sdk = _fromRoot(candidate, 'fvm-cache');
       if (sdk != null) {
         trace.add(
-          ResolutionStep('flutter-root', rootDesc, StepOutcome.found, sdk.root),
+          ResolutionStep('fvm-cache', description, StepOutcome.found, sdk.root),
         );
-        return done(sdk);
+        return sdk;
       }
+    }
+    trace.add(
+      ResolutionStep(
+        'fvm-cache',
+        description,
+        StepOutcome.notFound,
+        'version $version is not installed in: ${candidates.join(', ')}',
+      ),
+    );
+    return null;
+  }
+
+  FlutterSdk? _puro(String projectDir, List<ResolutionStep> trace) {
+    const description = 'puro file .puro.json in the project or a parent';
+    final file = _findUp(projectDir, '.puro.json');
+    if (file == null) {
+      trace.add(
+        const ResolutionStep('puro', description, StepOutcome.notFound),
+      );
+      return null;
+    }
+    final name = _jsonString(_fs.readText(file), 'env');
+    if (name == null || !_versionPattern.hasMatch(name)) {
       trace.add(
         ResolutionStep(
-          'flutter-root',
-          rootDesc,
+          'puro',
+          description,
           StepOutcome.invalid,
-          '${flutterRoot.trim()} has no ${_ctx.join('bin', _flutterBin)}',
+          '$file has no usable "env" name',
         ),
       );
+      return null;
     }
+    final rootEnv = env.env('PURO_ROOT');
+    final home = env.home;
+    final base = (rootEnv != null && rootEnv.isNotEmpty)
+        ? rootEnv
+        : (home == null ? null : _ctx.join(home, '.puro'));
+    final sdk = base == null
+        ? null
+        : _fromRoot(_ctx.join(base, 'envs', name, 'flutter'), 'puro');
+    trace.add(
+      sdk != null
+          ? ResolutionStep('puro', description, StepOutcome.found, sdk.root)
+          : ResolutionStep(
+              'puro',
+              description,
+              StepOutcome.notFound,
+              base == null
+                  ? 'no home folder and PURO_ROOT is not set'
+                  : 'environment "$name" is not installed under $base',
+            ),
+    );
+    return sdk;
+  }
 
-    // 8. PATH
-    const pathDesc = 'flutter on PATH';
+  FlutterSdk? _flutterOnPath(List<ResolutionStep> trace) {
+    const description = 'flutter on PATH';
     final onPath = findExecutableOnPath(
       'flutter',
       env,
       isExecutableFile: _fs.isExecutableFile,
     );
     if (onPath == null) {
-      trace.add(const ResolutionStep('path', pathDesc, StepOutcome.notFound));
+      trace.add(
+        const ResolutionStep('path', description, StepOutcome.notFound),
+      );
       return null;
     }
+    // Follow symlinks (Homebrew, snap): the SDK folder is above the real bin/.
     final real = _fs.resolveLink(onPath) ?? onPath;
     final binDir = _ctx.dirname(real);
     final base = _ctx.basename(real).toLowerCase();
@@ -513,27 +483,25 @@ class SdkResolver {
       final sdk = looksLikeSdk ? _fromRoot(candidateRoot, 'path') : null;
       if (sdk != null) {
         trace.add(
-          ResolutionStep('path', pathDesc, StepOutcome.found, sdk.root),
+          ResolutionStep('path', description, StepOutcome.found, sdk.root),
         );
-        return done(sdk);
+        return sdk;
       }
     }
     // A shim (asdf, mise, a wrapper script): use it as found.
     trace.add(
       ResolutionStep(
         'path',
-        pathDesc,
+        description,
         StepOutcome.found,
         '$onPath (launcher; the SDK folder is unknown)',
       ),
     );
-    return done(
-      FlutterSdk(
-        root: null,
-        flutterExecutable: onPath,
-        sourceStep: 'path',
-        fileSystem: _fs,
-      ),
+    return FlutterSdk(
+      root: null,
+      flutterExecutable: onPath,
+      sourceStep: 'path',
+      fileSystem: _fs,
     );
   }
 
@@ -595,9 +563,7 @@ class SdkResolver {
           'bundled-dart',
           bundledDesc,
           StepOutcome.notFound,
-          flutter.root == null
-              ? 'the Flutter command is a launcher'
-              : 'bin/cache/dart-sdk is missing; run flutter once to download it',
+          flutter.root == null ? 'the Flutter command is a launcher' : 'bin/cache/dart-sdk is missing; run flutter once to download it',
         ),
       );
     } else {
@@ -673,27 +639,19 @@ class SdkResolver {
 
   // ---------------------------------------------------------------- helpers
 
-  String? _findUp(String startDir, String relative) {
-    var dir = _ctx.normalize(_ctx.absolute(startDir));
-    while (true) {
-      final candidate = _ctx.join(dir, relative);
-      if (_fs.exists(candidate)) return candidate;
-      final parent = _ctx.dirname(dir);
-      if (parent == dir) return null;
-      dir = parent;
-    }
-  }
+  String? _findUp(String startDir, String relative) =>
+      findUpwards(startDir, relative, env, exists: _fs.exists);
 
   static String? _jsonString(String? text, String key) {
     if (text == null) return null;
     try {
-      final decoded = jsonDecode(text.replaceFirst('﻿', ''));
+      final decoded = jsonDecode(text.replaceFirst('\uFEFF', ''));
       if (decoded is Map) {
         final value = decoded[key];
         if (value is String && value.trim().isNotEmpty) return value.trim();
       }
     } on FormatException {
-      // Fall through.
+      // Malformed JSON counts as no value.
     }
     return null;
   }

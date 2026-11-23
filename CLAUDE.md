@@ -1,11 +1,17 @@
 # zed-flutter-run
 
-Goal: VS Code–style Flutter Run & Debug in the Zed editor, a standalone open-source tool for global users.
+Flutter run and debug for the Zed editor: a thin Rust Zed extension (`extension/`) and a Dart command-line tool and debug adapter proxy, `flutter_run` (`cli/`).
 
-## Start here
-- **Cloud / autonomous agent:** read and follow `docs/HANDOFF.md`. The user is unavailable, so don't ask questions.
-- Everyone else: `docs/README.md` is the index.
+## Read first
 
-## Standing instructions from the user
-- **Subagents:** always launch them with `model: "sonnet"` and `effort: "medium"`, unless the user names something else.
-- **Docs are the project memory.** Read `docs/` before working. After every milestone or useful conversation, add a log to `docs/conversations/`, record decisions in `docs/decisions/` (ADRs), keep the facts in `docs/research/` correct (add correction notes), and update the index in `docs/README.md`.
+- `docs/ARCHITECTURE.md`: how the parts fit together.
+- `docs/DESIGN.md`: why it is built this way. Do not undo a recorded choice without saying so.
+- `CONTRIBUTING.md`: build and test commands and the code rules.
+
+## Rules
+
+- Keep the docs true. When behaviour changes, update `docs/CONFIGURATION.md`, `docs/ARCHITECTURE.md` and `CHANGELOG.md` in the same change, and record a new design choice in `docs/DESIGN.md`.
+- Format, analysis and the unit tests must pass before a change is done (see `CONTRIBUTING.md`).
+- Commit messages use Conventional Commits: `type: short imperative summary`.
+- Do not add process notes, review reports or planning documents to the repository.
+- Docs and comments are plain, direct English. Comments explain why, not what.

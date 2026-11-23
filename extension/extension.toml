@@ -2,12 +2,16 @@ id = "flutter-run-debugger"
 name = "Flutter Run & Debug"
 version = "0.1.0"
 schema_version = 1
-authors = ["Flutter Run & Debug contributors"]
+authors = ["sawongam"]
 description = "Flutter Run & Debug: hot reload, reload on save, device picker and DevTools for Zed."
 repository = "https://github.com/sawongam/zed-flutter-run"
 
 [debug_adapters.FlutterRun]
-# schema: debug_adapter_schemas/FlutterRun.json (default path)
+# The schema is read from debug_adapter_schemas/FlutterRun.json.
+
+# Turns tasks such as `flutter run -d linux` or `dart run bin/main.dart` into FlutterRun scenarios.
+# Zed only consults it when FlutterRun is the first entry of the language's debuggers list.
+[debug_locators.FlutterRun]
 
 [[capabilities]]
 kind = "download_file"

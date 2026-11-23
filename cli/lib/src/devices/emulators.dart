@@ -27,9 +27,18 @@ final RegExp _emulatorLine = RegExp(
   r'^(\S+)\s+•\s+(.+?)\s+•\s+(.+?)\s+•\s+(.+)$',
 );
 
-/// Ids that are safe to hand to `flutter emulators --launch` (local copy of
-/// the shared rule: no leading dash, no spaces, no shell characters).
-final RegExp safeEmulatorIdPattern = RegExp(r'^[A-Za-z0-9_][A-Za-z0-9_.:@-]*$');
+/// Ids that are safe to hand to `flutter emulators --launch`: no leading
+/// dash, no spaces, no shell characters.
+final RegExp _safeEmulatorId = RegExp(r'^[A-Za-z0-9_][A-Za-z0-9_.:@-]*$');
+
+/// Throws [UsageError] unless [id] is safe to pass to `--launch`.
+void requireSafeEmulatorId(String id) {
+  if (_safeEmulatorId.hasMatch(id)) return;
+  throw UsageError(
+    'The emulator id "$id" is not valid.',
+    hint: 'Run "flutter_run emulators" to see the available ids.',
+  );
+}
 
 /// Parses the text table printed by `flutter emulators`. Lines that do not
 /// match (banners, header, hints) are ignored.
@@ -75,12 +84,7 @@ Future<void> launchEmulator(
   String id, {
   String? workingDirectory,
 }) async {
-  if (!safeEmulatorIdPattern.hasMatch(id)) {
-    throw UsageError(
-      'The emulator id "$id" is not valid.',
-      hint: 'Run "flutter_run emulators" to see the available ids.',
-    );
-  }
+  requireSafeEmulatorId(id);
   await runFlutterChecked(run, <String>[
     'emulators',
     '--launch',

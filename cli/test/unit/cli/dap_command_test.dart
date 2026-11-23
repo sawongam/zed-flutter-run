@@ -202,9 +202,8 @@ void main() {
         output: client.output,
         startupResponseWait: const Duration(seconds: 5),
       );
-      final exit = runnerWith(
-        command,
-      ).run(['dap', '--cwd', '${t.dir.path}/app']);
+      final exit = runnerWith(command)
+          .run(['dap', '--cwd', '${t.dir.path}/app']);
       final seq = client.send('initialize', {'adapterID': 'FlutterRun'});
       final response = await client.response(seq);
       expect(response['success'], isFalse);
@@ -249,9 +248,8 @@ void main() {
           output: client.output,
           startupResponseWait: const Duration(milliseconds: 100),
         );
-        final exit = await runnerWith(
-          command,
-        ).run(['dap', '--cwd', '${t.dir.path}/app']);
+        final exit = await runnerWith(command)
+            .run(['dap', '--cwd', '${t.dir.path}/app']);
         expect(exit, ExitCodes.sdkNotFound);
         expect(client.messages.where((m) => m['type'] == 'response'), isEmpty);
         await client.output_('Could not find a Flutter SDK');
@@ -261,9 +259,8 @@ void main() {
     test(
       'a spawn failure answers with exit 1',
       () async {
-        File(
-          '$sdk/bin/flutter',
-        ).writeAsStringSync('#!/nonexistent/interpreter\n');
+        File('$sdk/bin/flutter')
+            .writeAsStringSync('#!/nonexistent/interpreter\n');
         final exit = runDap([]);
         client.send('initialize');
         final out = await client.output_('Could not start');
@@ -300,21 +297,14 @@ void main() {
     );
   });
 
-  group('signals (R3)', () {
+  group('signals', () {
     for (final signal in [
       ProcessSignal.sigint,
       if (!Platform.isWindows) ProcessSignal.sigterm,
       if (!Platform.isWindows) ProcessSignal.sighup,
     ]) {
       test('${signal.name} runs the same cleanup as a closed stdin', () async {
-        final controllers = {
-          for (final s in [
-            ProcessSignal.sigint,
-            ProcessSignal.sigterm,
-            ProcessSignal.sighup,
-          ])
-            s: StreamController<ProcessSignal>.broadcast(),
-        };
+        final signals = FakeSignalSource();
         final command = DapCommand(
           t.wiring,
           input: client.input.stream,
@@ -322,16 +312,14 @@ void main() {
           resolvedExecutable: '/opt/tools/flutter_run',
           startupResponseWait: const Duration(milliseconds: 500),
           sessionWriteDebounce: const Duration(milliseconds: 10),
-          signalSource: (s) =>
-              (controllers[s] ?? StreamController<ProcessSignal>()).stream,
+          signalSource: signals,
         );
-        final exit = runnerWith(
-          command,
-        ).run(['dap', '--cwd', '${t.dir.path}/app', '--flutter-sdk', sdk]);
+        final exit = runnerWith(command)
+            .run(['dap', '--cwd', '${t.dir.path}/app', '--flutter-sdk', sdk]);
         client.send('initialize');
         client.send('launch', {'cwd': '${t.dir.path}/app', 'noDebug': true});
         await waitForSession((s) => s['appStarted'] == true);
-        controllers[signal]!.add(signal);
+        signals.raise(signal);
         expect(await exit.timeout(const Duration(seconds: 30)), 0);
         expect(sessionFiles(), isEmpty);
       });

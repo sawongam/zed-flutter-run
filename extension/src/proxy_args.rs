@@ -1,6 +1,7 @@
 //! Pure logic: parsing the scenario JSON, building the proxy argv/env, request kind, scenarios.
 
 use serde_json::{Map, Value, json};
+use zed_extension_api::StartDebuggingRequestArgumentsRequest as Request;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -17,13 +18,7 @@ impl Kind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Request {
-    Launch,
-    Attach,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ProxyConfig {
     pub cwd: Option<String>,
     pub kind: Kind,
@@ -34,6 +29,27 @@ pub struct ProxyConfig {
     pub request: Request,
 }
 
+const KEY_TYPE: &str = "type";
+const KEY_REQUEST: &str = "request";
+const KEY_CWD: &str = "cwd";
+const KEY_FLUTTER_SDK_PATH: &str = "flutterSdkPath";
+const KEY_USE_FVM: &str = "useFvm";
+const KEY_LOG_FILE: &str = "logFile";
+const KEY_ENV: &str = "env";
+
+/// Keys of the debug configuration that the extension itself reads (`parse_config`,
+/// `request_kind`). The schema test checks that each one is declared in the JSON schema.
+#[cfg(test)]
+pub const READ_KEYS: &[&str] = &[
+    KEY_TYPE,
+    KEY_REQUEST,
+    KEY_CWD,
+    KEY_FLUTTER_SDK_PATH,
+    KEY_USE_FVM,
+    KEY_LOG_FILE,
+    KEY_ENV,
+];
+
 fn non_empty_string(obj: &Map<String, Value>, key: &str) -> Option<String> {
     obj.get(key)
         .and_then(Value::as_str)
@@ -42,13 +58,12 @@ fn non_empty_string(obj: &Map<String, Value>, key: &str) -> Option<String> {
 }
 
 fn parse_env(value: Option<&Value>) -> Result<Vec<(String, String)>, String> {
-    let Some(value) = value else {
-        return Ok(Vec::new());
-    };
     let obj = match value {
-        Value::Null => return Ok(Vec::new()),
-        Value::Object(obj) => obj,
-        _ => return Err("The \"env\" setting must be an object of names and values.".to_string()),
+        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Object(obj)) => obj,
+        Some(_) => {
+            return Err("The \"env\" setting must be an object of names and values.".to_string());
+        }
     };
     let mut out = Vec::with_capacity(obj.len());
     for (name, v) in obj {
@@ -70,7 +85,7 @@ fn parse_env(value: Option<&Value>) -> Result<Vec<(String, String)>, String> {
 
 /// `dap_request_kind`: `attach` -> Attach; `launch` or missing -> Launch; anything else is an error.
 pub fn request_kind(config: &Value) -> Result<Request, String> {
-    match config.get("request") {
+    match config.get(KEY_REQUEST) {
         None | Some(Value::Null) => Ok(Request::Launch),
         Some(Value::String(s)) if s == "launch" => Ok(Request::Launch),
         Some(Value::String(s)) if s == "attach" => Ok(Request::Attach),
@@ -87,7 +102,7 @@ pub fn parse_config(config_json: &str) -> Result<ProxyConfig, String> {
     let obj = value
         .as_object()
         .ok_or_else(|| "The debug configuration must be a JSON object.".to_string())?;
-    let kind = match obj.get("type") {
+    let kind = match obj.get(KEY_TYPE) {
         None | Some(Value::Null) => Kind::Flutter,
         Some(Value::String(s)) if s.is_empty() || s == "flutter" => Kind::Flutter,
         Some(Value::String(s)) if s == "dart" => Kind::Dart,
@@ -98,43 +113,43 @@ pub fn parse_config(config_json: &str) -> Result<ProxyConfig, String> {
         }
     };
     Ok(ProxyConfig {
-        cwd: non_empty_string(obj, "cwd"),
+        cwd: non_empty_string(obj, KEY_CWD),
         kind,
-        flutter_sdk_path: non_empty_string(obj, "flutterSdkPath"),
-        use_fvm: obj.get("useFvm").and_then(Value::as_bool) == Some(true),
-        log_file: non_empty_string(obj, "logFile"),
-        env: parse_env(obj.get("env"))?,
+        flutter_sdk_path: non_empty_string(obj, KEY_FLUTTER_SDK_PATH),
+        use_fvm: obj.get(KEY_USE_FVM).and_then(Value::as_bool) == Some(true),
+        log_file: non_empty_string(obj, KEY_LOG_FILE),
+        env: parse_env(obj.get(KEY_ENV))?,
         request: request_kind(&value)?,
     })
 }
 
 /// Argv for the proxy; `cwd` is the resolved working directory (one argv element, spaces kept).
 pub fn build_proxy_args(cfg: &ProxyConfig, cwd: &str, client_version: &str) -> Vec<String> {
-    let mut args = vec![
-        "dap".to_string(),
-        "--cwd".to_string(),
-        cwd.to_string(),
-        "--kind".to_string(),
-        cfg.kind.as_str().to_string(),
-        "--request".to_string(),
-        match cfg.request {
-            Request::Launch => "launch".to_string(),
-            Request::Attach => "attach".to_string(),
-        },
-    ];
+    let request = match cfg.request {
+        Request::Launch => "launch",
+        Request::Attach => "attach",
+    };
+    let mut args: Vec<String> = [
+        "dap",
+        "--cwd",
+        cwd,
+        "--kind",
+        cfg.kind.as_str(),
+        "--request",
+        request,
+    ]
+    .map(String::from)
+    .into();
     if let Some(sdk) = &cfg.flutter_sdk_path {
-        args.push("--flutter-sdk".to_string());
-        args.push(sdk.clone());
+        args.extend(["--flutter-sdk".to_string(), sdk.clone()]);
     }
     if cfg.use_fvm {
         args.push("--use-fvm".to_string());
     }
     if let Some(log) = &cfg.log_file {
-        args.push("--log-file".to_string());
-        args.push(log.clone());
+        args.extend(["--log-file".to_string(), log.clone()]);
     }
-    args.push("--client-version".to_string());
-    args.push(client_version.to_string());
+    args.extend(["--client-version".to_string(), client_version.to_string()]);
     args
 }
 
@@ -153,7 +168,7 @@ pub fn merge_env(
         }
     };
     let mut out: Vec<(String, String)> = Vec::with_capacity(shell_env.len() + config_env.len());
-    for (k, v) in shell_env.iter().chain(config_env.iter()) {
+    for (k, v) in shell_env.iter().chain(config_env) {
         match out.iter_mut().find(|(ek, _)| same(ek, k)) {
             Some(existing) => *existing = (k.clone(), v.clone()),
             None => out.push((k.clone(), v.clone())),
@@ -193,13 +208,6 @@ pub fn resolve_cwd(cwd: Option<&str>, root: &str) -> String {
     format!("{}{sep}{rel}", root.trim_end_matches(['/', '\\']))
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ScenarioSpec {
-    pub label: String,
-    pub adapter: String,
-    pub config: Value,
-}
-
 pub struct LaunchSpec<'a> {
     pub program: &'a str,
     pub cwd: Option<&'a str>,
@@ -207,42 +215,77 @@ pub struct LaunchSpec<'a> {
     pub envs: &'a [(String, String)],
 }
 
-/// `dap_config_to_scenario`: `Some(launch)` for a launch request, `None` for attach.
+/// A `.dart` program under `bin/` or `tool/` of the project is a plain Dart script and needs the
+/// Dart debug adapter. Everything else (`lib/`, `test/`, `integration_test/`, a root `main.dart`)
+/// stays Flutter, because a wrong `dart` breaks Flutter apps and integration tests while a wrong
+/// `flutter` only fails loudly. The path is made relative to `cwd` when both are absolute; an
+/// absolute path that cannot be related to a project (`/var/lib/x/bin/a.dart`) stays Flutter.
+fn kind_for_program(program: &str, cwd: Option<&str>) -> Kind {
+    if !program.to_ascii_lowercase().ends_with(".dart") {
+        return Kind::Flutter;
+    }
+    let program = program.replace('\\', "/");
+    let relative = if is_absolute(&program) {
+        let root = cwd.map(|c| c.replace('\\', "/")).unwrap_or_default();
+        let root = root.trim_end_matches('/');
+        match program.strip_prefix(root).filter(|_| !root.is_empty()) {
+            Some(rest) if rest.starts_with('/') => rest.trim_start_matches('/').to_string(),
+            _ => return Kind::Flutter,
+        }
+    } else {
+        program
+    };
+    let mut parts = relative.split('/').filter(|p| !p.is_empty() && *p != ".");
+    match (parts.next(), parts.next()) {
+        // needs a file below the directory, so `bin.dart` is not `bin/`
+        (Some(dir), Some(_)) if matches!(dir.to_ascii_lowercase().as_str(), "bin" | "tool") => {
+            Kind::Dart
+        }
+        _ => Kind::Flutter,
+    }
+}
+
+/// `dap_config_to_scenario`: the config for `Some(launch)` or, for `None`, an attach request.
+///
+/// A modal attach has nowhere to ask for the VM service address, so the generated scenario
+/// still needs `vmServiceUri` (or `vmServiceInfoFile`) added by the user before it can connect.
+///
+/// # Errors
+/// A launch request with an empty program.
 pub fn config_to_scenario(
-    label: &str,
     launch: Option<LaunchSpec>,
     stop_on_entry: Option<bool>,
-) -> ScenarioSpec {
+) -> Result<Value, String> {
     let mut config = Map::new();
-    match launch {
-        Some(l) => {
-            config.insert("request".into(), json!("launch"));
-            config.insert("type".into(), json!("flutter"));
-            config.insert("program".into(), json!(l.program));
-            if let Some(cwd) = l.cwd {
-                config.insert("cwd".into(), json!(cwd));
-            }
-            config.insert("args".into(), json!(l.args));
-            let env: Map<String, Value> = l
-                .envs
-                .iter()
-                .map(|(k, v)| (k.clone(), Value::String(v.clone())))
-                .collect();
-            config.insert("env".into(), Value::Object(env));
+    if let Some(l) = launch {
+        let program = l.program.trim();
+        if program.is_empty() {
+            return Err("Cannot start a Flutter or Dart launch without a program. Enter the file to run, for example lib/main.dart.".to_string());
         }
-        None => {
-            config.insert("request".into(), json!("attach"));
-            config.insert("type".into(), json!("flutter"));
+        config.insert("request".into(), json!("launch"));
+        config.insert(
+            "type".into(),
+            json!(kind_for_program(program, l.cwd).as_str()),
+        );
+        config.insert("program".into(), json!(program));
+        if let Some(cwd) = l.cwd {
+            config.insert("cwd".into(), json!(cwd));
         }
+        config.insert("args".into(), json!(l.args));
+        let env: Map<String, Value> = l
+            .envs
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+            .collect();
+        config.insert("env".into(), Value::Object(env));
+    } else {
+        config.insert("request".into(), json!("attach"));
+        config.insert("type".into(), json!("flutter"));
     }
     if let Some(stop) = stop_on_entry {
         config.insert("stopOnEntry".into(), json!(stop));
     }
-    ScenarioSpec {
-        label: label.to_string(),
-        adapter: "FlutterRun".to_string(),
-        config: Value::Object(config),
-    }
+    Ok(Value::Object(config))
 }
 
 #[cfg(test)]
@@ -401,8 +444,7 @@ mod tests {
     fn scenario_launch() {
         let args = vec!["--a".to_string()];
         let envs = vec![kv("K", "V")];
-        let s = config_to_scenario(
-            "L",
+        let config = config_to_scenario(
             Some(LaunchSpec {
                 program: "lib/main.dart",
                 cwd: Some("/p"),
@@ -410,11 +452,10 @@ mod tests {
                 envs: &envs,
             }),
             Some(true),
-        );
-        assert_eq!(s.adapter, "FlutterRun");
-        assert_eq!(s.label, "L");
+        )
+        .unwrap();
         assert_eq!(
-            s.config,
+            config,
             json!({"request":"launch","type":"flutter","program":"lib/main.dart","cwd":"/p",
                    "args":["--a"],"env":{"K":"V"},"stopOnEntry":true})
         );
@@ -422,8 +463,7 @@ mod tests {
 
     #[test]
     fn scenario_launch_without_cwd_or_stop() {
-        let s = config_to_scenario(
-            "L",
+        let config = config_to_scenario(
             Some(LaunchSpec {
                 program: "p",
                 cwd: None,
@@ -431,24 +471,128 @@ mod tests {
                 envs: &[],
             }),
             None,
-        );
+        )
+        .unwrap();
         assert_eq!(
-            s.config,
+            config,
             json!({"request":"launch","type":"flutter","program":"p","args":[],"env":{}})
         );
     }
 
     #[test]
     fn scenario_attach() {
-        let s = config_to_scenario("A", None, Some(false));
+        let config = config_to_scenario(None, Some(false)).unwrap();
         assert_eq!(
-            s.config,
+            config,
             json!({"request":"attach","type":"flutter","stopOnEntry":false})
         );
         assert_eq!(
-            config_to_scenario("A", None, None).config,
+            config_to_scenario(None, None).unwrap(),
             json!({"request":"attach","type":"flutter"})
         );
+    }
+
+    fn launch_type_in(program: &str, cwd: Option<&str>) -> Result<Value, String> {
+        config_to_scenario(
+            Some(LaunchSpec {
+                program,
+                cwd,
+                args: &[],
+                envs: &[],
+            }),
+            None,
+        )
+        .map(|config| config["type"].clone())
+    }
+
+    fn launch_type(program: &str) -> Result<Value, String> {
+        launch_type_in(program, None)
+    }
+
+    #[test]
+    fn scenario_type_follows_the_program_location() {
+        for program in [
+            "lib/main.dart",
+            "./lib/main.dart",
+            "lib\\main_dev.dart",
+            "/abs/app/lib/main.dart",
+            "example/lib/main.dart",
+            "lib/bin/x.dart",
+            "main", // not a .dart file
+            "integration_test/app_test.dart",
+            "test/a_test.dart",
+            "main.dart",
+            "bin.dart",
+            "example/bin/x.dart", // only the project-level bin/ counts
+            "/var/lib/x/bin/tool.dart",
+            "/usr/lib/foo/main.dart",
+            "/abs/pkg/bin/tool.dart", // absolute without a cwd: cannot tell
+        ] {
+            assert_eq!(launch_type(program), Ok(json!("flutter")), "{program}");
+        }
+        for program in [
+            "bin/tool.dart",
+            "bin\\tool.dart",
+            "./bin/tool.dart",
+            "tool/gen.dart",
+            "BIN/Tool.DART",
+            "tool/lib/x.dart",
+            "bin/src/x.dart",
+        ] {
+            assert_eq!(launch_type(program), Ok(json!("dart")), "{program}");
+        }
+    }
+
+    #[test]
+    fn scenario_type_uses_cwd_to_relate_absolute_programs() {
+        let dart = |p, c| launch_type_in(p, Some(c));
+        assert_eq!(dart("/w/app/bin/t.dart", "/w/app"), Ok(json!("dart")));
+        assert_eq!(dart("/w/app/bin/t.dart", "/w/app/"), Ok(json!("dart")));
+        assert_eq!(dart("C:\\w\\tool\\g.dart", "C:\\w"), Ok(json!("dart")));
+        assert_eq!(dart("/w/app/lib/main.dart", "/w/app"), Ok(json!("flutter")));
+        assert_eq!(dart("/w/app/main.dart", "/w/app"), Ok(json!("flutter")));
+        assert_eq!(
+            dart("/w/app/integration_test/a.dart", "/w/app"),
+            Ok(json!("flutter"))
+        );
+        // outside the cwd, or a sibling that merely shares the prefix
+        assert_eq!(dart("/other/bin/t.dart", "/w/app"), Ok(json!("flutter")));
+        assert_eq!(dart("/w/app2/bin/t.dart", "/w/app"), Ok(json!("flutter")));
+        // under a system lib directory even with a cwd
+        assert_eq!(dart("/var/lib/x/bin/t.dart", "/w"), Ok(json!("flutter")));
+        // relative program with a cwd
+        assert_eq!(dart("bin/t.dart", "/w/app"), Ok(json!("dart")));
+    }
+
+    #[test]
+    fn scenario_rejects_empty_program() {
+        for program in ["", "   "] {
+            let err = launch_type(program).unwrap_err();
+            assert!(err.contains("without a program"), "{err}");
+        }
+    }
+
+    #[test]
+    fn scenario_trims_program() {
+        let config = config_to_scenario(
+            Some(LaunchSpec {
+                program: " bin/a.dart ",
+                cwd: None,
+                args: &[],
+                envs: &[],
+            }),
+            None,
+        )
+        .unwrap();
+        assert_eq!(config["program"], "bin/a.dart");
+    }
+
+    #[test]
+    fn read_keys_are_unique_and_known() {
+        let mut keys = READ_KEYS.to_vec();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), READ_KEYS.len());
     }
 
     #[test]

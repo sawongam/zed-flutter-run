@@ -317,6 +317,27 @@ void main() {
     },
   );
 
+  test('client tolerates an error reply with mistyped fields', () async {
+    final odd = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    odd.listen((socket) {
+      socket
+        ..add(
+          utf8.encode(
+            '{"v":1,"id":1,"ok":false,"error":{"code":5,"message":[]}}\n',
+          ),
+        )
+        ..flush();
+    });
+    addTearDown(odd.close);
+    final response = await ControlClient().send(
+      sessionInfo(port: odd.port),
+      'ping',
+    );
+    expect(response.ok, isFalse);
+    expect(response.errorCode, ControlErrorCode.internal);
+    expect(response.errorMessage, 'The session reported an error.');
+  });
+
   test('client send times out on a silent server', () async {
     final silent = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final sockets = <Socket>[];

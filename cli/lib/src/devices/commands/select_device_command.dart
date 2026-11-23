@@ -1,5 +1,6 @@
 import 'package:args/command_runner.dart';
 
+import '../../common/clock.dart';
 import '../../common/console.dart';
 import '../../common/errors.dart';
 import '../../common/global_options.dart';
@@ -12,14 +13,12 @@ import '../picker.dart';
 /// `flutter_run select-device [--device <id>] [--clear]`.
 class SelectDeviceCommand extends Command<int> {
   SelectDeviceCommand({
-    required FlutterRunnerFactory runnerFor,
-    required DeviceStore store,
-    required HostEnvironment env,
-    required Console console,
-  }) : _runnerFor = runnerFor,
-       _store = store,
-       _env = env,
-       _console = console {
+    required this._runnerFor,
+    required this._store,
+    required this._env,
+    required this._console,
+    this._clock = const SystemClock(),
+  }) {
     GlobalOptions.addTo(argParser);
     argParser
       ..addOption(
@@ -38,6 +37,7 @@ class SelectDeviceCommand extends Command<int> {
   final DeviceStore _store;
   final HostEnvironment _env;
   final Console _console;
+  final Clock _clock;
 
   @override
   String get name => 'select-device';
@@ -116,7 +116,7 @@ class SelectDeviceCommand extends Command<int> {
         deviceId: chosen.id,
         name: chosen.name,
         platform: chosen.platform,
-        savedAt: DateTime.now().toUtc(),
+        savedAt: _clock.now().toUtc(),
       ),
     );
     _console.out(

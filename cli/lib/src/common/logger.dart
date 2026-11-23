@@ -1,6 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'clock.dart';
+import 'files.dart';
+import 'host_environment.dart';
+
 enum LogLevel { error, warn, info, debug, trace }
 
 /// Diagnostic logger. Writes to stderr (or an injected sink) and optionally a
@@ -10,15 +14,17 @@ enum LogLevel { error, warn, info, debug, trace }
 /// is `trace`), plus DAP traffic from [dap].
 class Logger {
   Logger({
-    LogLevel level = LogLevel.info,
+    this._level = LogLevel.info,
     IOSink? stderrSink,
     String? logFilePath,
-    DateTime Function()? clock,
-  }) : _level = level,
-       _clock = clock ?? DateTime.now,
-       _stderr = stderrSink ?? stderr {
+    this._clock = const SystemClock(),
+    HostEnvironment? env,
+  }) : _stderr = stderrSink ?? stderr {
     if (logFilePath != null && logFilePath.isNotEmpty) {
-      final problem = _openLogFile(logFilePath);
+      final problem = _openLogFile(
+        logFilePath,
+        env ?? HostEnvironment.system(),
+      );
       if (problem != null) {
         _stderr?.writeln(
           _format(
@@ -30,25 +36,19 @@ class Logger {
     }
   }
 
-  Logger._base(this._level) : _clock = DateTime.now;
+  Logger._base(this._level) : _clock = const SystemClock();
 
   factory Logger.silent() = _SilentLogger;
 
-  /// Collects formatted lines into [sink]; for tests.
-  factory Logger.capturing(
-    List<String> sink, {
-    LogLevel level = LogLevel.trace,
-  }) => _CapturingLogger(sink, level: level);
-
   final LogLevel _level;
-  final DateTime Function() _clock;
+  final Clock _clock;
   IOSink? _stderr;
   IOSink? _file;
 
   LogLevel get level => _level;
 
   /// Opens [path] for appending, owner-only. Returns a reason when refused.
-  String? _openLogFile(String path) {
+  String? _openLogFile(String path, HostEnvironment env) {
     if (!path.toLowerCase().endsWith('.log')) {
       return 'its name must end in .log.';
     }
@@ -63,17 +63,12 @@ class Logger {
         return 'it is not a regular file.';
       }
       if (type == FileSystemEntityType.notFound) file.createSync();
-      if (!Platform.isWindows) {
-        final r = Process.runSync('/bin/chmod', ['600', path]);
-        if (r.exitCode != 0) {
-          return 'it could not be restricted to your user.';
-        }
+      if (!env.isWindows && !restrictToOwner(path, 0x180)) {
+        return 'it could not be restricted to your user.';
       }
       _file = file.openWrite(mode: FileMode.append);
       return null;
     } on FileSystemException catch (e) {
-      return '${e.message}.';
-    } on ProcessException catch (e) {
       return '${e.message}.';
     }
   }
@@ -141,7 +136,7 @@ class Logger {
   }
 
   String _format(LogLevel at, String message) {
-    final t = _clock();
+    final t = _clock.now();
     String two(int n) => n.toString().padLeft(2, '0');
     final ms = t.millisecond.toString().padLeft(3, '0');
     final stamp = '${two(t.hour)}:${two(t.minute)}:${two(t.second)}.$ms';
@@ -149,19 +144,18 @@ class Logger {
   }
 
   /// Escapes control characters so a line can never start a new line.
-  static String _escape(String m) =>
-      m.replaceAllMapped(RegExp(r'[\x00-\x1f\x7f]'), (match) {
-        final c = match[0]!.codeUnitAt(0);
-        switch (c) {
-          case 0x0a:
-            return r'\n';
-          case 0x0d:
-            return r'\r';
-          case 0x09:
-            return r'\t';
-        }
-        return '\\x${c.toRadixString(16).padLeft(2, '0')}';
-      });
+  static String _escape(String m) => m.replaceAllMapped(_controlChars, (match) {
+    final c = match[0]!.codeUnitAt(0);
+    switch (c) {
+      case 0x0a:
+        return r'\n';
+      case 0x0d:
+        return r'\r';
+      case 0x09:
+        return r'\t';
+    }
+    return '\\x${c.toRadixString(16).padLeft(2, '0')}';
+  });
 
   static String _dapText(Object? message) {
     try {
@@ -188,6 +182,8 @@ class Logger {
   }
 }
 
+final RegExp _controlChars = RegExp(r'[\x00-\x1f\x7f]');
+
 class _SilentLogger extends Logger {
   _SilentLogger() : super._base(LogLevel.error);
 
@@ -196,24 +192,4 @@ class _SilentLogger extends Logger {
 
   @override
   void dap(String direction, Object? message) {}
-}
-
-class _CapturingLogger extends Logger {
-  _CapturingLogger(this.sink, {LogLevel level = LogLevel.trace})
-    : super._base(level);
-
-  final List<String> sink;
-
-  @override
-  void _log(LogLevel at, String message) {
-    if (at.index <= level.index) sink.add(_format(at, message));
-  }
-
-  @override
-  void dap(String direction, Object? message) {
-    final text = Logger._dapText(message);
-    if (level.index >= LogLevel.trace.index) {
-      sink.add(_format(LogLevel.trace, '$direction $text'));
-    }
-  }
 }

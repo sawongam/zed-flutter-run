@@ -1,26 +1,14 @@
-//! Binary resolution helpers: asset naming, paths, PATH selection, checksums, texts.
+//! Locating and downloading the `flutter_run` proxy: asset names, paths, PATH selection,
+//! checksums and error texts. No I/O happens here, so everything is testable on the host.
 
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
+use zed_extension_api::{Architecture as Arch, Os};
 
 pub const PROXY_VERSION: &str = "0.1.0";
-pub const REPO: &str = "sawongam/zed-flutter-run";
+const REPO: &str = "sawongam/zed-flutter-run";
 /// Flipped by the release steps once `dart pub global activate flutter_run` works.
-pub const PUBLISHED_ON_PUB: bool = false;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Os {
-    Mac,
-    Linux,
-    Windows,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Arch {
-    Aarch64,
-    X8664,
-    X86,
-}
+const PUBLISHED_ON_PUB: bool = false;
 
 /// Release asset name, e.g. `flutter_run-v0.1.0-linux-x64`.
 /// Windows on ARM uses the x64 binary (runs under emulation).
@@ -73,63 +61,59 @@ pub fn is_stale_install_dir(name: &str, current_version: &str) -> bool {
     name.starts_with("flutter_run-") && name != install_dir(current_version)
 }
 
-fn is_batch_shim(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    lower.ends_with(".bat") || lower.ends_with(".cmd")
-}
-
-/// Picks the proxy command: user setting, then PATH. On Windows `.bat`/`.cmd` shims are
-/// ignored (Zed would kill only `cmd.exe` and orphan the real proxy) and `.exe` is preferred.
-pub fn pick_command(
-    user: Option<String>,
-    which_exe: Option<String>,
-    which_plain: Option<String>,
-    os: Os,
-) -> Option<String> {
-    if let Some(user) = user.filter(|u| !u.is_empty()) {
-        return Some(user);
-    }
-    match os {
-        Os::Windows => which_exe
-            .filter(|p| !is_batch_shim(p))
-            .or_else(|| which_plain.filter(|p| !is_batch_shim(p))),
-        _ => which_plain.or(which_exe),
-    }
-}
-
-/// The `.bat`/`.cmd` shim that `pick_command` ignored on Windows, if any.
-pub fn ignored_shim(
-    which_exe: Option<&String>,
-    which_plain: Option<&String>,
-    os: Os,
-) -> Option<String> {
-    if os != Os::Windows {
-        return None;
-    }
-    [which_exe, which_plain]
-        .into_iter()
-        .flatten()
-        .find(|p| is_batch_shim(p))
-        .cloned()
-}
-
-pub fn batch_shim_message(path: &str) -> String {
-    format!(
-        "Found {path}, but Zed cannot supervise a .bat wrapper (stopping a debug session would leave the real flutter_run running). Install the release flutter_run.exe on your PATH (see the README section \"Install\"), or set \"dap\": {{\"FlutterRun\": {{\"binary\": \"<path to flutter_run.exe>\"}}}} in Zed settings."
-    )
-}
-
 /// True for leftover download files (`flutter_run[.exe].part-<n>`).
 pub fn is_part_file(name: &str) -> bool {
     name.starts_with("flutter_run") && name.contains(".part-")
 }
 
-/// Lower-case hex SHA-256 (hex written by hand; `{:x}` does not work with sha2 0.11).
+/// Executable names to look up on PATH, in order of preference.
+pub fn path_lookup_names(os: Os) -> &'static [&'static str] {
+    if os == Os::Windows {
+        &["flutter_run.exe", "flutter_run"]
+    } else {
+        &["flutter_run"]
+    }
+}
+
+fn is_batch_shim(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".bat") || lower.ends_with(".cmd")
+}
+
+/// Outcome of looking for a ready-made `flutter_run`.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Selection {
+    Use(String),
+    /// Only a `.bat`/`.cmd` wrapper was found (Windows).
+    OnlyBatchShim(String),
+    Nothing,
+}
+
+/// Picks the proxy command: the user setting, then the first PATH hit. On Windows `.bat`/`.cmd`
+/// shims are skipped, because Zed would kill only `cmd.exe` and orphan the real proxy.
+pub fn select_command(user: Option<String>, path_hits: &[String], os: Os) -> Selection {
+    if let Some(user) = user.filter(|u| !u.is_empty()) {
+        return Selection::Use(user);
+    }
+    if os != Os::Windows {
+        return path_hits
+            .first()
+            .map_or(Selection::Nothing, |p| Selection::Use(p.clone()));
+    }
+    match path_hits.iter().find(|p| !is_batch_shim(p)) {
+        Some(usable) => Selection::Use(usable.clone()),
+        None => path_hits
+            .first()
+            .map_or(Selection::Nothing, |p| Selection::OnlyBatchShim(p.clone())),
+    }
+}
+
+/// Lower-case hex SHA-256 (written by hand because `{:x}` does not work with sha2 0.11).
 pub fn sha256_hex(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let digest = Sha256::digest(bytes);
     let mut out = String::with_capacity(digest.len() * 2);
-    for byte in digest.iter() {
+    for byte in &digest {
         out.push(DIGITS[(byte >> 4) as usize] as char);
         out.push(DIGITS[(byte & 0x0f) as usize] as char);
     }
@@ -138,12 +122,13 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 pub fn verify_sha256(bytes: &[u8], expected_hex: &str) -> Result<(), String> {
     let actual = sha256_hex(bytes);
-    if actual.eq_ignore_ascii_case(expected_hex.trim()) {
+    let expected = expected_hex.trim();
+    if actual.eq_ignore_ascii_case(expected) {
         Ok(())
     } else {
         Err(format!(
             "The downloaded flutter_run does not match its pinned checksum (expected {}, got {actual}).",
-            expected_hex.trim().to_ascii_lowercase()
+            expected.to_ascii_lowercase()
         ))
     }
 }
@@ -163,6 +148,22 @@ fn not_found_message_with(published_on_pub: bool) -> String {
     )
 }
 
+/// Why no download is possible although the platform is supported: the build either has no
+/// pinned checksums at all (a dev build) or none for this asset.
+pub fn missing_pin_message(table_is_empty: bool) -> String {
+    if table_is_empty {
+        "This build of the extension has no pinned release checksums, so it cannot download flutter_run. Install flutter_run on your PATH (see the README section \"Install\") or set \"dap\": {\"FlutterRun\": {\"binary\": \"<path>\"}} in Zed settings.".to_string()
+    } else {
+        not_found_message()
+    }
+}
+
+pub fn batch_shim_message(path: &str) -> String {
+    format!(
+        "Found {path}, but Zed cannot supervise a .bat wrapper (stopping a debug session would leave the real flutter_run running). Install the release flutter_run.exe on your PATH (see the README section \"Install\"), or set \"dap\": {{\"FlutterRun\": {{\"binary\": \"<path to flutter_run.exe>\"}}}} in Zed settings."
+    )
+}
+
 pub fn download_failed_message(version: &str, err: &str) -> String {
     format!(
         "Could not download flutter_run v{version} from GitHub ({err}). Download the file for your system from https://github.com/{REPO}/releases and put it on your PATH, or set \"dap\": {{\"FlutterRun\": {{\"binary\": \"<path>\"}}}} in Zed settings."
@@ -172,6 +173,10 @@ pub fn download_failed_message(version: &str, err: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn s(v: &str) -> String {
+        v.to_string()
+    }
 
     #[test]
     fn asset_names() {
@@ -244,54 +249,79 @@ mod tests {
         assert!(!is_stale_install_dir("something-else", "0.1.0"));
     }
 
-    fn s(v: &str) -> Option<String> {
-        Some(v.to_string())
+    #[test]
+    fn part_files() {
+        assert!(is_part_file("flutter_run.part-12"));
+        assert!(is_part_file("flutter_run.exe.part-12"));
+        assert!(!is_part_file("flutter_run"));
+        assert!(!is_part_file("other.part-1"));
     }
 
     #[test]
-    fn user_path_wins() {
+    fn path_names_prefer_exe_on_windows() {
         assert_eq!(
-            pick_command(s("/u/fr"), s("a.exe"), s("b"), Os::Windows),
-            s("/u/fr")
+            path_lookup_names(Os::Windows),
+            ["flutter_run.exe", "flutter_run"]
         );
-        assert_eq!(
-            pick_command(s("/u/fr"), None, s("b"), Os::Linux),
-            s("/u/fr")
-        );
+        assert_eq!(path_lookup_names(Os::Linux), ["flutter_run"]);
+        assert_eq!(path_lookup_names(Os::Mac), ["flutter_run"]);
     }
 
     #[test]
-    fn windows_ignores_bat_and_cmd() {
+    fn user_setting_wins() {
+        let hits = [s("a.exe"), s("b")];
         assert_eq!(
-            pick_command(None, None, s("C:\\p\\flutter_run.bat"), Os::Windows),
-            None
+            select_command(Some(s("/u/fr")), &hits, Os::Windows),
+            Selection::Use(s("/u/fr"))
         );
         assert_eq!(
-            pick_command(None, None, s("C:\\p\\FLUTTER_RUN.CMD"), Os::Windows),
-            None
+            select_command(Some(s("/u/fr")), &[], Os::Linux),
+            Selection::Use(s("/u/fr"))
         );
+        // an empty setting counts as unset
         assert_eq!(
-            pick_command(
-                None,
-                s("C:\\p\\flutter_run.exe"),
-                s("C:\\p\\flutter_run.bat"),
-                Os::Windows
-            ),
-            s("C:\\p\\flutter_run.exe")
-        );
-        assert_eq!(
-            pick_command(None, None, s("C:\\p\\flutter_run"), Os::Windows),
-            s("C:\\p\\flutter_run")
+            select_command(Some(s("")), &[], Os::Linux),
+            Selection::Nothing
         );
     }
 
     #[test]
-    fn posix_uses_plain() {
+    fn windows_skips_bat_and_cmd() {
+        let select = |hits: &[&str]| {
+            let hits: Vec<String> = hits.iter().map(ToString::to_string).collect();
+            select_command(None, &hits, Os::Windows)
+        };
         assert_eq!(
-            pick_command(None, None, s("/usr/bin/flutter_run"), Os::Linux),
-            s("/usr/bin/flutter_run")
+            select(&["C:\\p\\flutter_run.bat"]),
+            Selection::OnlyBatchShim(s("C:\\p\\flutter_run.bat"))
         );
-        assert_eq!(pick_command(None, None, None, Os::Mac), None);
+        assert_eq!(
+            select(&["C:\\p\\FLUTTER_RUN.CMD"]),
+            Selection::OnlyBatchShim(s("C:\\p\\FLUTTER_RUN.CMD"))
+        );
+        assert_eq!(
+            select(&["C:\\p\\flutter_run.exe", "C:\\p\\flutter_run.bat"]),
+            Selection::Use(s("C:\\p\\flutter_run.exe"))
+        );
+        assert_eq!(
+            select(&["C:\\p\\flutter_run.bat", "C:\\p\\flutter_run"]),
+            Selection::Use(s("C:\\p\\flutter_run"))
+        );
+        assert_eq!(select(&[]), Selection::Nothing);
+    }
+
+    #[test]
+    fn posix_uses_the_first_hit() {
+        assert_eq!(
+            select_command(None, &[s("/usr/bin/flutter_run")], Os::Linux),
+            Selection::Use(s("/usr/bin/flutter_run"))
+        );
+        assert_eq!(select_command(None, &[], Os::Mac), Selection::Nothing);
+        // only Windows treats wrappers specially
+        assert_eq!(
+            select_command(None, &[s("/x/flutter_run.bat")], Os::Linux),
+            Selection::Use(s("/x/flutter_run.bat"))
+        );
     }
 
     #[test]
@@ -311,9 +341,11 @@ mod tests {
         let good = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
         assert!(verify_sha256(b"abc", good).is_ok());
         assert!(verify_sha256(b"abc", &good.to_uppercase()).is_ok());
-        let err = verify_sha256(b"abd", good).unwrap_err();
-        assert!(err.contains(good), "{err}");
-        assert!(err.contains(&sha256_hex(b"abd")), "{err}");
+        let text = verify_sha256(b"abd", good).unwrap_err();
+        assert!(
+            text.contains(good) && text.contains(&sha256_hex(b"abd")),
+            "{text}"
+        );
     }
 
     #[test]
@@ -329,29 +361,26 @@ mod tests {
     }
 
     #[test]
-    fn shim_detection_and_message() {
-        let bat = "C:\\p\\flutter_run.bat".to_string();
-        assert_eq!(
-            ignored_shim(None, Some(&bat), Os::Windows),
-            Some(bat.clone())
-        );
-        assert_eq!(ignored_shim(None, Some(&bat), Os::Linux), None);
-        let exe = "C:\\p\\flutter_run.exe".to_string();
-        assert_eq!(ignored_shim(Some(&exe), None, Os::Windows), None);
-        let m = batch_shim_message(&bat);
+    fn empty_checksum_table_has_its_own_message() {
+        let text = missing_pin_message(true);
+        assert!(text.contains("no pinned release checksums"), "{text}");
         assert!(
-            m.contains(&bat)
+            text.contains("PATH") && text.contains("\"binary\""),
+            "{text}"
+        );
+        assert_ne!(text, missing_pin_message(false));
+        assert_eq!(missing_pin_message(false), not_found_message());
+    }
+
+    #[test]
+    fn shim_message_names_the_file_and_the_fix() {
+        let bat = "C:\\p\\flutter_run.bat";
+        let m = batch_shim_message(bat);
+        assert!(
+            m.contains(bat)
                 && m.contains(".bat")
                 && m.contains("flutter_run.exe")
                 && m.contains("\"binary\"")
         );
-    }
-
-    #[test]
-    fn part_files() {
-        assert!(is_part_file("flutter_run.part-12"));
-        assert!(is_part_file("flutter_run.exe.part-12"));
-        assert!(!is_part_file("flutter_run"));
-        assert!(!is_part_file("other.part-1"));
     }
 }

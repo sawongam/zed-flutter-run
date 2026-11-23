@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io' show IOSink;
 
+import '../common/clock.dart';
 import '../common/logger.dart';
+import 'bounded.dart';
 import 'framing.dart';
 import 'messages.dart';
 
@@ -25,9 +27,12 @@ class StreamDapChannel implements DapChannel {
     StreamSink<List<int>> output, {
     Logger? logger,
     String label = '',
+    this._clock = const SystemClock(),
   }) : _output = output,
        _logger = logger ?? Logger.silent(),
-       _label = label {
+       _label = label,
+       _inLabel = '$label<',
+       _outLabel = '$label>' {
     _controller = StreamController<DapJson>(
       onPause: () => _subscription?.pause(),
       onResume: () => _subscription?.resume(),
@@ -45,12 +50,14 @@ class StreamDapChannel implements DapChannel {
     if (sink is IOSink) {
       // A broken pipe is reported here, asynchronously; without a listener it
       // would surface as an uncaught error.
-      sink.done.then<void>(
-        (_) => _outputClosed = true,
-        onError: (Object e) {
-          _outputClosed = true;
-          _logger.debug('The $_label channel closed: $e');
-        },
+      unawaited(
+        sink.done.then<void>(
+          (_) => _outputClosed = true,
+          onError: (Object e) {
+            _outputClosed = true;
+            _logger.debug('The $_label channel closed: $e');
+          },
+        ),
       );
     }
   }
@@ -58,8 +65,11 @@ class StreamDapChannel implements DapChannel {
   static const Duration _ioTimeout = Duration(seconds: 2);
 
   final StreamSink<List<int>> _output;
+  final Clock _clock;
   final Logger _logger;
   final String _label;
+  final String _inLabel;
+  final String _outLabel;
   final DapFrameDecoder _decoder = DapFrameDecoder();
   late final StreamController<DapJson> _controller;
   StreamSubscription<List<int>>? _subscription;
@@ -72,7 +82,7 @@ class StreamDapChannel implements DapChannel {
     if (_controller.isClosed) return;
     try {
       for (final message in _decoder.add(chunk)) {
-        _logger.dap('$_label<', message);
+        _logger.dap(_inLabel, message);
         _controller.add(message);
       }
     } on DapFramingException catch (e) {
@@ -96,7 +106,7 @@ class StreamDapChannel implements DapChannel {
       _logger.error('Dropped a $_label message that could not be encoded', e);
       return;
     }
-    _logger.dap('$_label>', message);
+    _logger.dap(_outLabel, message);
     try {
       _output.add(bytes);
     } on Object catch (e) {
@@ -111,7 +121,12 @@ class StreamDapChannel implements DapChannel {
     final output = _output;
     try {
       if (output is IOSink) {
-        await output.flush().timeout(_ioTimeout, onTimeout: () {});
+        await withTimeout<void>(
+          _clock,
+          output.flush(),
+          _ioTimeout,
+          onTimeout: () {},
+        );
       }
     } on Object catch (e) {
       _logger.debug('Could not flush the $_label channel: $e');
@@ -123,7 +138,12 @@ class StreamDapChannel implements DapChannel {
     if (!_outputClosed) {
       _outputClosed = true;
       try {
-        await _output.close().timeout(_ioTimeout, onTimeout: () {});
+        await withTimeout<void>(
+          _clock,
+          _output.close(),
+          _ioTimeout,
+          onTimeout: () {},
+        );
       } on Object catch (e) {
         _logger.debug('Could not close the $_label channel: $e');
       }
@@ -144,7 +164,8 @@ abstract interface class AdapterConnection {
   /// Already decoded lines; the proxy mirrors and logs them.
   Stream<String> get stderrLines;
 
-  /// POSIX: descendants of the adapter. Windows: just the adapter pid.
+  /// The adapter's current descendants, or just its own pid when the process
+  /// table cannot be read.
   Future<Set<int>> snapshotDescendants();
 
   /// [crashed]: the adapter died on its own, so [extraPids] may include

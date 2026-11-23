@@ -1,283 +1,228 @@
-# Flutter Run & Debug
+# Flutter Run & Debug for Zed
 
-VS Code-style **Flutter Run & Debug in the [Zed](https://zed.dev) editor**. It is a thin Rust Zed extension (`flutter-run-debugger`, which registers the debug adapter `FlutterRun`) plus a Dart command-line tool and DAP proxy, `flutter_run`. You get one-key launch, breakpoints, hot reload, hot restart, reload on save, a device picker and DevTools, on Linux, macOS and Windows.
+Run and debug Flutter apps in [Zed](https://zed.dev) the way you do in VS Code: press a key to launch, set breakpoints, hot reload on save, pick a device, open DevTools.
 
-> Not affiliated with, endorsed by or sponsored by Google, Flutter, Dart or Zed Industries. Flutter and Dart are trademarks of Google LLC. Zed is a trademark of Zed Industries, Inc.
+[![CI](https://github.com/sawongam/zed-flutter-run/actions/workflows/ci.yml/badge.svg)](https://github.com/sawongam/zed-flutter-run/actions/workflows/ci.yml)
+[![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sawongam/zed-flutter-run/badge)](https://scorecard.dev/viewer/?uri=github.com/sawongam/zed-flutter-run)
 
-**Status: 0.1.0 preview.** Verified headlessly (unit and integration tests, no real Zed UI session yet). Not published anywhere yet: no pub.dev package, no Zed extension registry entry, no GitHub release. See [docs/STATUS.md](docs/STATUS.md) for what is verified and what is not.
+> **Preview (0.1.0).** The test suite drives the real Flutter and Dart debug adapters on Linux, macOS and Windows, but the tool has had little use in day-to-day Zed sessions yet. Expect rough edges and please [report them](https://github.com/sawongam/zed-flutter-run/issues).
 
-## Features
+## What you get
 
-- Launch Flutter apps and Dart programs under the debugger (breakpoints, stepping, variables, debug console).
-- Hot reload and hot restart from Zed tasks and key bindings (`flutter_run reload`, `flutter_run restart`).
-- Reload on save (only changed files by default; configurable).
-- Attach to an app that is already running.
-- Device picker and emulator launcher (`devices`, `select-device`, `emulators`).
-- DevTools in your browser (`devtools`, optional auto-open on start).
-- `init` writes `.zed/debug.json` and `.zed/tasks.json` for you and prints a keymap snippet.
-- Flutter SDK discovery: explicit path, environment variable, FVM, Puro, `FLUTTER_ROOT`, `PATH`.
-- `doctor` explains what the tool sees. No telemetry.
-
-## Requirements
-
-- **Zed** with debugger extension support, extension API 0.7.0. According to the `zed_extension_api` README that means Zed **0.205 or newer** (use a recent Zed).
-- A **Flutter SDK** (for Flutter apps) or a Dart SDK (for plain Dart programs).
-- To build from source: the Dart SDK (bundled with Flutter) and, for the Zed extension, **Rust via [rustup](https://rustup.rs)** (Zed compiles dev extensions to WebAssembly itself).
-
-## Install
-
-Two steps: the `flutter_run` command must be on your `PATH` (Zed tasks can only run commands from there), and the Zed extension must be installed.
-
-### Step 1: `flutter_run` on your PATH
-
-**(a) Build from source** (works today; the code lives on branch `build/mvp` until it is merged)
-
-```sh
-git clone https://github.com/sawongam/zed-flutter-run
-cd zed-flutter-run
-git checkout build/mvp        # the code is on this branch until it is merged (PR #1)
-cd cli
-dart pub get
-dart compile exe bin/flutter_run.dart -o flutter_run        # Windows: -o flutter_run.exe
-```
-
-Then put the file somewhere on your PATH.
-
-| OS | Example |
+| | |
 |---|---|
-| Linux | `mkdir -p ~/.local/bin && cp flutter_run ~/.local/bin/` and make sure `~/.local/bin` is on PATH (`export PATH="$HOME/.local/bin:$PATH"` in `~/.bashrc` or `~/.zshrc`) |
-| macOS | `mkdir -p ~/.local/bin && cp flutter_run ~/.local/bin/` and add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` |
-| Windows (PowerShell) | `mkdir $HOME\bin; copy flutter_run.exe $HOME\bin\` then add `%USERPROFILE%\bin` to your user PATH (System Properties > Environment Variables) |
+| Launch, breakpoints, stepping, variables, debug console | Yes |
+| Hot reload and hot restart | Yes, by key or task |
+| Hot reload on save | Yes, including local packages such as `packages/app_ui` |
+| Flavors and several entry points | Yes, copied from `.vscode/launch.json` or found automatically |
+| Attach to a running app | Yes |
+| Device picker and emulator launcher | Yes, as tasks or commands |
+| DevTools | Opens in your browser |
+| FVM and Puro SDKs | Found automatically |
+| Toolbar buttons, status bar device selector, settings screen | No. Zed has no extension API for them |
 
-**(b) Install with `dart pub global activate` from Git** (works today)
-
-```sh
-dart pub global activate --source git https://github.com/sawongam/zed-flutter-run --git-path cli --git-ref build/mvp
-```
-
-Drop `--git-ref build/mvp` once the branch is merged.
-
-Add the pub-cache bin folder to your PATH:
-
-| OS | Folder | How |
-|---|---|---|
-| Linux, macOS | `~/.pub-cache/bin` | `export PATH="$PATH:$HOME/.pub-cache/bin"` in `~/.bashrc` / `~/.zshrc` |
-| Windows | `%LOCALAPPDATA%\Pub\Cache\bin` | add it to your user PATH |
-
-On Windows the pub-cache entry is a `.bat` wrapper. Zed cannot supervise a `.bat` file, so prefer option (a) there (or set `dap.FlutterRun.binary`, see below).
-
-**(c) Later (not available yet):** release binaries on GitHub, Homebrew, Scoop and `dart pub global activate flutter_run` from pub.dev.
-
-Check it:
-
-```sh
-flutter_run version
-flutter_run doctor
-```
-
-### Step 2: the Zed extension
-
-Until it is in the Zed extension registry, install it as a dev extension:
-
-1. Install Rust with [rustup](https://rustup.rs) (Zed builds dev extensions).
-2. In Zed open the command palette and run **`zed: install dev extension`**, then choose the `extension/` folder of this repository.
-
-**macOS note:** a Zed started from the Dock or Spotlight may not see the PATH from your shell profile. If the debugger cannot find `flutter_run`, start Zed from a terminal (`zed .`) or point Zed at the file in your Zed settings:
-
-```json
-{
-  "dap": {
-    "FlutterRun": { "binary": "/absolute/path/to/flutter_run" }
-  }
-}
-```
-
-The extension looks for `flutter_run` in this order: `dap.FlutterRun.binary`, then `PATH`, then (release builds only) a checksum-pinned download from GitHub releases. A dev build never downloads.
+Code completion and analysis are not part of this project. Use Zed's Dart extension for those; the two work side by side.
 
 ## Quick start
 
+On Linux or macOS, with Flutter, Zed and [rustup](https://rustup.rs) installed:
+
 ```sh
+# 1. The command-line tool (once per computer)
+dart pub global activate --source git https://github.com/sawongam/zed-flutter-run --git-path cli
+flutter_run doctor
+
+# 2. The Zed extension (once per computer)
+git clone https://github.com/sawongam/zed-flutter-run ~/zed-flutter-run
+#    then in Zed: command palette > "zed: install dev extension" > ~/zed-flutter-run/extension
+
+# 3. The keys for hot reload and hot restart (once per computer)
+flutter_run keymap
+
+# 4. Your project (once per project)
 cd my_flutter_app
+flutter_run init
+zed .
+```
+
+In Zed, press **F4** and choose **Flutter: Debug**. Each step is explained below. On Windows, follow the Windows notes in step 1.
+
+## Install
+
+You need:
+
+- **Flutter**, with Dart 3.13 or newer (`flutter --version` shows both).
+- **Zed 0.205 or newer.**
+- **[rustup](https://rustup.rs)**, because Zed builds the extension from source. You never run Rust yourself.
+
+There are two parts. The `flutter_run` command-line tool does the work. The small Zed extension connects it to Zed's debugger. You need both.
+
+### Step 1. Install `flutter_run`
+
+**Linux and macOS:**
+
+```sh
+dart pub global activate --source git https://github.com/sawongam/zed-flutter-run --git-path cli
+```
+
+Then make sure `~/.pub-cache/bin` is on your `PATH`. If `flutter_run` is not found, add this line to `~/.bashrc`, `~/.zshrc` or your shell's equivalent, and open a new terminal:
+
+```sh
+export PATH="$PATH:$HOME/.pub-cache/bin"
+```
+
+**Windows:** Zed cannot manage the `.bat` launcher that `dart pub global activate` creates, so build a real `.exe` instead:
+
+```powershell
+git clone https://github.com/sawongam/zed-flutter-run
+cd zed-flutter-run\cli
+dart pub get
+dart compile exe bin\flutter_run.dart -o flutter_run.exe
+```
+
+Then copy `flutter_run.exe` to a folder on your `PATH`.
+
+**Check it.** This should find your Flutter SDK and list your devices:
+
+```sh
+flutter_run doctor
+```
+
+### Step 2. Install the Zed extension
+
+The extension is not in Zed's extension store yet, so install it from a clone of this repository:
+
+1. Clone the repository, if you have not already: `git clone https://github.com/sawongam/zed-flutter-run`
+2. In Zed, open the command palette (Ctrl+Shift+P, or Cmd+Shift+P on macOS) and run **`zed: install dev extension`**.
+3. Choose the `extension` folder inside the clone.
+
+The first build takes a few minutes. When it is done, **Flutter Run & Debug** shows on the Extensions page (`zed: extensions`). If it does not, run `zed: open log` to see why.
+
+**macOS:** Zed opened from the Dock or Finder may not see your shell's `PATH`, and then it cannot find `flutter_run`. Start Zed from a terminal (`zed .`), or tell Zed where the tool is, as shown in [Zed settings](docs/CONFIGURATION.md#zed-settings).
+
+### Step 3. Add the keys
+
+```sh
+flutter_run keymap
+```
+
+Zed extensions cannot add key bindings, so this command adds them to your Zed keymap for you. You only do this once per computer, and the keys then work in every project.
+
+| Key | Action |
+|---|---|
+| Ctrl+F5 | Hot reload |
+| Ctrl+Shift+F5 (macOS: Shift+Cmd+F5) | Hot restart |
+| Ctrl+Alt+Shift+D | Open DevTools |
+
+**Want other keys?** Pass them when you run it. For example, to hot reload with Ctrl+S and hot restart with Ctrl+Shift+S:
+
+```sh
+flutter_run keymap --reload-key ctrl-s --restart-key ctrl-shift-s
+```
+
+The keys only change while a debug session runs, so outside one Ctrl+S still just saves and Ctrl+Shift+S is still Save As. The command also warns you when a key clashes with your Zed keymap (JetBrains, Sublime Text, Emacs, Vim) or your OS. Add `--dry-run` to see the change before it is made. To change keys later, edit them in Zed's keymap editor (`zed: open keymap`). See [Keys](docs/CONFIGURATION.md#keys) for every option.
+
+### Step 4. Set up your project
+
+In the folder that has your app's `pubspec.yaml`:
+
+```sh
 flutter_run init
 ```
 
-Then in Zed:
+This writes two files into `.zed/`:
 
-1. Open the project folder.
-2. Press **F4** and pick **Flutter: Debug**.
-3. Set breakpoints by clicking the gutter.
-4. Edit and **save** (reload on save), or press **Ctrl+F5** for hot reload and **Ctrl+Shift+F5** for hot restart.
-5. **Shift+F5** stops the session.
+- **`debug.json`:** what you can start with F4.
+- **`tasks.json`:** hot reload, hot restart, device picker, DevTools and doctor, which the keys from step 3 use.
 
-`init` never overwrites your settings silently. It merges into existing `.zed/debug.json` and `.zed/tasks.json` when it can, and prints the files for you to paste when it cannot (`--force` replaces them and keeps a `.bak`). Use `--dry-run` to preview. It also prints a keymap snippet to paste after you run **`zed: open keymap file`**.
+`init` works out how your app starts:
 
-## Keys
+- With a `.vscode/launch.json`, it copies those configurations, including flavors and `--dart-define`s.
+- With `lib/main.dart`, you get **Flutter: Debug**, **Flutter: Run (no debug)** and **Flutter: Profile**.
+- With flavor files such as `lib/main_dev.dart` and `lib/main_prod.dart`, you get **Flutter: Debug dev**, **Flutter: Debug prod** and so on, with `--flavor` when Android or iOS defines the flavor.
+- Local packages in the project, such as `packages/app_ui`, are watched too, so saving there also hot reloads.
 
-| Key | Action | Source |
-|---|---|---|
-| F4 | Start or choose a debug scenario | Zed default |
-| F5 | Run the last scenario again; Continue when paused (does nothing while the app runs) | Zed default |
-| Shift+F5 | Stop | Zed default |
-| F6 | Pause | Zed default |
-| Ctrl+F5 | Hot reload (task `Flutter: Hot Reload`) | keymap snippet from `init` |
-| Ctrl+Shift+F5 (macOS: Shift+Cmd+F5) | Hot restart (task `Flutter: Hot Restart`) | keymap snippet from `init` |
-| Ctrl+Alt+Shift+D | Open DevTools | keymap snippet from `init` |
+`init` adds to files you already have and never overwrites them without telling you. Add `--dry-run` to see what it would write. Commit the `.zed` folder so your teammates get it too. They still need steps 1 to 3 on their own computer.
 
-Our bindings use the context `Workspace && debugger_session`, so they only work while a debug session is running. Zed has no "run without debugging" key: pick **Flutter: Run (no debug)** with F4. Zed also binds its own restart to Ctrl+Shift+F5; `init` prints a second snippet without the hot restart key if you want to keep Zed's behaviour.
+## Use
 
-**macOS:** F keys also need the `fn` key unless you enable "Use F1, F2, etc. keys as standard function keys" in System Settings > Keyboard. If a key does nothing, check System Settings > Keyboard > Keyboard Shortcuts for a conflict.
+1. Open the project in Zed (`zed .`).
+2. Press **F4** and choose a scenario, such as **Flutter: Debug**. The first build takes as long as `flutter run` does.
+3. Set breakpoints by clicking in the gutter next to a line number.
+4. Edit and save a file: the app hot reloads. The **Console** tab of the Debug panel shows `[flutter_run]` messages, including how long each reload took.
+5. Press **Shift+F5** to stop. Nothing is left running.
 
-## Configuration reference
-
-Entries in `.zed/debug.json` (JSONC: comments and trailing commas are allowed). `adapter` must be `FlutterRun`.
-
-**FlutterRun-specific keys**
-
-| Key | Default | Meaning |
-|---|---|---|
-| `adapter` | | Must be `"FlutterRun"`. |
-| `label` | | Name shown in the F4 picker. |
-| `request` | `launch` | `launch` a new app or `attach` to a running one. |
-| `type` | `flutter` | `flutter` app or plain `dart` program. |
-| `program` | `lib/main.dart` | Entry point. |
-| `cwd` | worktree root | Working directory (use `$ZED_WORKTREE_ROOT`). |
-| `args` | | Arguments passed to the app. |
-| `toolArgs` | | Extra arguments for `flutter run` / `flutter attach` (for example `--flavor dev`, `-d <id>`). |
-| `env` | | Environment variables for the adapter and the app. |
-| `flutterMode` | `debug` | `debug`, `profile` or `release` (added as `--profile` / `--release`). |
-| `deviceId` | | Device id; adds `-d <id>` unless `toolArgs` already selects a device. |
-| `platform` | | Accepted for copy-paste compatibility with Dart-Code; ignored. |
-| `vmServiceUri` | | VM service URI to attach to (`request: attach`). |
-| `vmServiceInfoFile` | | File with JSON `{"uri": "..."}` (`request: attach`). |
-| `useFvm` | `false` | Require the SDK selected by FVM for the project. |
-| `flutterSdkPath` | | Flutter SDK root; first step of SDK resolution. |
-| `reloadOnSave` | `changed` | `changed` (only files whose content changed), `always` (every save) or `off`. |
-| `reloadOnSaveGlobs` | | Extra globs, relative to the project, that also trigger a reload. Each must start with a directory, for example `assets/**.json`. |
-| `reloadOnSaveDebounceMs` | `200` | Wait after the last change (10 to 5000). |
-| `openDevTools` | `never` | Page to open in the browser when the app starts: `inspector`, `performance`, `cpu-profiler`, `memory`, `network`, `logging`. |
-| `logFile` | | Write the proxy's debug log and DAP traffic to this file. The name must end in `.log` and its folder must already exist; the file is created owner-only. `FLUTTER_RUN_LOG` follows the same rules. |
-
-**Dart programs (`type: dart`):** hot reload works; hot restart and DevTools are not available (the Dart debug adapter does not support them), and the matching tasks refuse with a hint.
-
-Reload on save watches `lib/` (and `bin/` for Dart programs) plus the directories named by `reloadOnSaveGlobs`.
-
-**Passed through to the Dart/Flutter debug adapter:** `stopOnEntry`, `noDebug`, `debugSdkLibraries`, `debugExternalPackageLibraries`, `evaluateGettersInDebugViews`, `evaluateToStringInDebugViews`, `sendLogsToClient`. Other keys are passed along too (the schema allows additional properties).
-
-**SDK resolution order:** `--flutter-sdk` / `flutterSdkPath`, the `FLUTTER_RUN_FLUTTER_SDK` environment variable, FVM (`.fvm/flutter_sdk`, `.fvmrc`, `.fvm/fvm_config.json`), Puro (`.puro.json`), `FLUTTER_ROOT`, then `flutter` on PATH. `flutter_run doctor` shows every step.
-
-**Environment variables:** `FLUTTER_RUN_FLUTTER_SDK`, `FLUTTER_RUN_DEVICE`, `FLUTTER_RUN_LOG` (log file), `FLUTTER_RUN_LOG_LEVEL`, `FLUTTER_RUN_STATE_DIR` (per-user state, including the saved device).
-
-## Commands
-
-Global options: `-h/--help`, `-v/--verbose`, `--project=<dir>` (default: current directory), `--flutter-sdk=<dir>`. Run `flutter_run help <command>` for details.
-
-| Command | What it does | Main flags |
-|---|---|---|
-| `init` | Write `.zed/debug.json` and `.zed/tasks.json`, print the keymap snippet | `--dry-run`, `--force` |
-| `reload` | Hot reload every running Flutter app of the project | `--timeout=<seconds>` (default 120) |
-| `restart` | Hot restart every running Flutter app of the project | `--timeout=<seconds>` |
-| `status` | List running debug sessions | `--json` |
-| `devices` | List devices and mark the saved one | `--json` |
-| `select-device` | Choose the device for the next start | `--device=<id>`, `--clear` |
-| `emulators` | List emulators and simulators, or start one | `--launch=<id>`, `--json` |
-| `devtools [page]` | Open DevTools for the running app | `--print` |
-| `doctor` | Show how `flutter_run` sees SDK, PATH, sessions and `.zed` files | |
-| `version` | Print the version | |
-| `dap` | Debug adapter proxy, started by the extension (not by hand) | `--cwd`, `--kind`, `--request`, `--use-fvm`, `--log-file`, `--client-version` |
-
-DevTools pages: `inspector`, `performance`, `cpu-profiler`, `memory`, `network`, `logging`.
-
-**Exit codes**
-
-| Code | Meaning |
+| Key | Action |
 |---|---|
-| 0 | Success |
-| 1 | Unexpected error (run with `--verbose`) |
-| 2 | Bad flags or arguments |
-| 3 | No Flutter debug session found for the directory |
-| 4 | A session could not act or failed (reload failed, app still starting) |
-| 5 | A session did not answer within `--timeout` |
-| 6 | Flutter or Dart SDK not found |
-| 7 | No devices, or an unknown device id |
-| 8 | No `pubspec.yaml` at or above the directory |
-| 9 | `init` could not edit a file safely and printed it for you to paste |
-| 10 | A flutter, dart or browser command failed |
-| 130 | Interrupted (Ctrl+C) |
+| F4 | Start, or choose what to run |
+| F5 | Run the last choice again; continue when paused at a breakpoint |
+| Shift+F5 | Stop |
+| Ctrl+F5 | Hot reload |
+| Ctrl+Shift+F5 (macOS: Shift+Cmd+F5) | Hot restart |
+| Ctrl+Alt+Shift+D | Open DevTools |
 
-## Devices and emulators
+The first three are Zed's own keys. The last three come from `flutter_run keymap` and only work while a debug session runs.
 
-```sh
-flutter_run devices            # the saved device is marked with *
-flutter_run select-device      # interactive; or: --device <id>, --clear
-flutter_run emulators          # list; or: --launch <id>
-```
+**No keys?** Every action is also a task. Open `task: spawn` (Alt+Shift+T, or Cmd+Shift+R on macOS) and type "Flutter".
 
-The saved device is kept in your per-user state folder (not in the repository), so it survives `flutter clean`. The device is chosen in this order: `deviceId` / `-d` in `toolArgs`, the `FLUTTER_RUN_DEVICE` variable, the saved device, then Flutter's own default. The debug console says which source it used. `init` also creates the tasks **Flutter: Select Device**, **Flutter: Launch Emulator** and **Flutter: Devices**.
+### More things you can do
 
-## DevTools
+- **Choose a device:** run the **Flutter: Select Device** task, or `flutter_run select-device`. The choice is remembered per project. Do this when you have more than one device connected, or Flutter may pick the wrong one.
+- **Start an emulator:** run the **Flutter: Launch Emulator** task, or `flutter_run emulators`.
+- **Open DevTools:** press Ctrl+Alt+Shift+D, or run `flutter_run devtools` (`flutter_run devtools inspector` opens one page). To open it on every launch, set `"openDevTools": "inspector"` in a scenario.
+- **Run without the debugger:** pick a **(no debug)** scenario with F4. Zed has no separate key for this.
+- **Attach to an app you started yourself:** see [Attach](docs/CONFIGURATION.md#attach).
+- **Change a scenario:** edit `.zed/debug.json`. Every key is listed in [Configuration](docs/CONFIGURATION.md).
 
-While an app runs, press Ctrl+Alt+Shift+D (after pasting the keymap snippet), run the task **Flutter: Open DevTools**, or run `flutter_run devtools [page]`. Use `--print` to only print the URL. Set `"openDevTools": "inspector"` (or another page) to open it automatically on start. DevTools is served by the Dart Development Service, so it is not available when DDS is disabled (`--no-dds`).
+## Common problems
 
-## Attach
-
-Attach to an app you started yourself. Start it with:
-
-```sh
-flutter run -d <device>
-```
-
-Copy the VM service URL it prints (`http://127.0.0.1:PORT/TOKEN=/`) and use an attach scenario:
-
-```json
-{
-  "label": "Flutter: Attach",
-  "adapter": "FlutterRun",
-  "request": "attach",
-  "type": "flutter",
-  "cwd": "$ZED_WORKTREE_ROOT",
-  "vmServiceUri": "http://127.0.0.1:PORT/TOKEN=/",
-  "toolArgs": ["-d", "<device>"]
-}
-```
-
-- If more than one device is connected, a device is required (`deviceId`, `toolArgs` `-d`, or a saved device).
-- `vmServiceInfoFile` must contain JSON `{"uri": "ws://..."}`. The file written by `flutter run --vmservice-out-file` is a bare string and makes the adapter wait forever, so use `vmServiceUri` instead.
-- Without any URI the adapter waits silently; after 15 seconds `flutter_run` prints a notice.
-- Stopping an attach session only detaches; your app keeps running.
-
-## Compared with VS Code and Dart-Code
-
-| Feature | Here |
+| Problem | Fix |
 |---|---|
-| Launch, breakpoints, stepping, variables, debug console | Yes |
-| Hot reload / hot restart | Yes, by key or task; reload on save |
-| Hot reload on save | Yes (`reloadOnSave`) |
-| Attach | Yes |
-| Device picker, emulator launch | Yes, as tasks or CLI (no status-bar device selector) |
-| DevTools | Opens in your browser (no embedded view) |
-| Debug toolbar buttons for reload / restart | No (keys and tasks instead) |
-| Status bar device or SDK indicator | No |
-| "Run without debugging" key | No key; use the **Flutter: Run (no debug)** scenario |
-| Flutter widget inspector inside the editor | No (use DevTools) |
-| Language features (completion, analysis) | Not part of this project; use Zed's Dart extension |
+| `flutter_run: command not found` | The pub cache `bin` folder is not on your `PATH`. See [step 1](#step-1-install-flutter_run). |
+| Zed says it cannot find `flutter_run` | Start Zed from a terminal (`zed .`) so it gets your `PATH`. |
+| `Target file "lib/main.dart" not found` | Your app starts from another file. Run `flutter_run init` again, or set `program` in `.zed/debug.json`. |
+| Hot reload or restart keys do nothing | Is a debug session running? Did you run `flutter_run keymap` and `flutter_run init`? If you just changed keys, restart Zed. On laptops, F keys may need Fn. |
+| Saving does not reload | Only `lib/` and the folders `init` found are watched. With Zed's autosave on, the reload already happened before you pressed Ctrl+S. |
+| The wrong device starts | Run the **Flutter: Select Device** task. |
 
-## Troubleshooting
+`flutter_run doctor` explains most setup problems. For everything else see [Troubleshooting](docs/TROUBLESHOOTING.md).
 
-Start with `flutter_run doctor` in your project.
+## Update and uninstall
 
-- **"No Flutter SDK found" / exit 6:** set `flutterSdkPath` in `debug.json`, set `FLUTTER_RUN_FLUTTER_SDK`, or put `flutter` on PATH. `doctor` lists every place it looked.
-- **`flutter_run` not on PATH:** the debugger still starts (through the extension), but tasks fail. Fix PATH as in [Install](#install). On macOS see the Dock note.
-- **Tasks say "No running Flutter app found":** no debug session is running for this directory, or it is still starting. Start the app with F4 first. `flutter_run status` lists sessions.
-- **Several devices:** Flutter refuses to choose. Run **Flutter: Select Device** (or `flutter_run select-device`) or set `deviceId`.
-- **App is paused at a breakpoint while you reload:** resume (F5) first; a paused isolate cannot finish a reload.
-- **Reload fails:** the error appears in the Debug panel's Console tab, with a hint to try hot restart.
-- **`debug.json` is rejected:** `.zed/debug.json` is JSONC. Remove syntax errors; `flutter_run init` prints the file instead of overwriting when it cannot parse yours.
-- **Need more detail:** set `"logFile": "/tmp/flutter_run.log"` in the scenario, or set `FLUTTER_RUN_LOG=/tmp/flutter_run.log` (and `FLUTTER_RUN_LOG_LEVEL=debug`). The file includes the full DAP traffic.
+**Update:** run the same install command again (on Windows, `git pull` and the `dart compile exe` line again). For the extension, `git pull` in the clone, then click **Rebuild** next to the extension on the Extensions page. Stop any running debug session first.
+
+**Uninstall:**
+
+1. Run `dart pub global deactivate flutter_run`, or on Windows delete `flutter_run.exe`.
+2. Uninstall the extension from Zed's Extensions page.
+3. Remove the block with `"Flutter: Hot Reload"` from your keymap (`zed: open keymap file`).
+4. Delete the `.zed` files `init` wrote, if you no longer want them.
+
+## Compatibility
+
+Zed 0.205 or newer (the first version with debugger extensions), the latest stable Flutter, and Linux, macOS or Windows. CI runs the unit tests and the Dart debug adapter on all three systems, and the Flutter debug adapter on Linux with the headless `flutter-tester` device. Real devices (desktop, Android, iOS, web) are not covered by CI, so a short [issue](https://github.com/sawongam/zed-flutter-run/issues) with your versions and the output of `flutter_run doctor` helps a lot.
 
 ## Privacy
 
-No telemetry. The tool talks to nothing except a loopback control port on your machine, the Flutter and Dart tools you run, and (release builds of the extension only) GitHub to download `flutter_run`.
+No telemetry, and nothing phones home. The only network use by this project is the one-time download of the `flutter_run` binary from this repository's GitHub releases, which is checked against a pinned SHA-256 and happens only when no `flutter_run` is on your `PATH`. The control channel is loopback only, with a per-session token. Log files exist only when you turn them on, and can contain your app's output, so check them before sharing.
 
-## Contributing and license
+## Documentation
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [SECURITY.md](SECURITY.md) and [CHANGELOG.md](CHANGELOG.md). Design notes live in [docs/](docs/README.md). Licensed under the BSD 3-Clause License, see [LICENSE](LICENSE).
+- [Configuration](docs/CONFIGURATION.md): every `debug.json` key, command, flag, key binding, environment variable and exit code
+- [Troubleshooting](docs/TROUBLESHOOTING.md): start with `flutter_run doctor`. Also lists known limitations
+- [Architecture](docs/ARCHITECTURE.md) and [design notes](docs/DESIGN.md): how it works and why
+
+## How it works
+
+Zed speaks the Debug Adapter Protocol. So does Flutter's own `flutter debug_adapter`. `flutter_run dap` sits between the two and passes messages through, adding what Zed does not offer on its own: it injects your chosen device, watches your source files and sends a hot reload when you save, and makes sure nothing is left running when you stop. Commands such as `flutter_run reload` reach the running session over a local, token-protected connection.
+
+## Contributing
+
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get set up, and [SECURITY.md](SECURITY.md) to report a vulnerability.
+
+## License
+
+[BSD 3-Clause](LICENSE).
+
+This project is not affiliated with or endorsed by Google or Zed Industries. Flutter and Dart are trademarks of Google LLC. Zed is a trademark of Zed Industries, Inc.

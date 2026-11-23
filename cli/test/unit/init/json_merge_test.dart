@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_run/src/init/json_merge.dart';
+import 'package:flutter_run/src/init/jsonc.dart';
 import 'package:test/test.dart';
 
 Map<String, Object?> e(String label, [Object? extra]) => {
@@ -60,14 +61,23 @@ void main() {
     'block comment': '/* x */ []',
     'trailing comma': '[{"label":"a"},]',
   }.entries) {
-    test('needs manual: ${entry.key}', () {
-      final r = mergeLabeledArray(entry.value, [e('a')]);
-      expect(r, isA<MergeNeedsManual>());
-      final m = r as MergeNeedsManual;
-      expect(m.reason, contains('comments or trailing commas'));
-      expect(jsonDecode(m.snippet), isA<List<Object?>>());
+    test('JSONC is merged as text: ${entry.key}', () {
+      final r = mergeLabeledArray(entry.value, [e('a'), e('b')]);
+      expect(r, isA<MergeUpdated>());
+      final m = r as MergeUpdated;
+      final labels = (decodeJsonc(m.content)! as List<Object?>).map(
+        (x) => (x! as Map<String, Object?>)['label'],
+      );
+      expect(labels.toSet(), {'a', 'b'});
+      if (entry.value.contains('//')) expect(m.content, startsWith('// hi'));
+      if (entry.value.contains('/*')) expect(m.content, contains('/* x */'));
     });
   }
+
+  test('JSONC that is not an array still needs manual', () {
+    final r = mergeLabeledArray('// c\n{"a": 1}', [e('a')]);
+    expect((r as MergeNeedsManual).reason, contains('not a JSON array'));
+  });
 
   test('empty and whitespace-only files are treated as absent', () {
     for (final text in ['', '  \n']) {
@@ -76,9 +86,10 @@ void main() {
   });
 
   test('UTF-8 BOM is stripped before parsing', () {
-    final r =
-        mergeLabeledArray('\uFEFF[{"label":"a"}]', [e('a'), e('b')])
-            as MergeUpdated;
+    final r = mergeLabeledArray('\uFEFF[{"label":"a"}]', [
+      e('a'),
+      e('b'),
+    ]) as MergeUpdated;
     expect(r.added, 1);
     expect(r.kept, 1);
     expect(r.content.startsWith('\uFEFF'), isFalse);
@@ -93,12 +104,5 @@ void main() {
     final r = mergeLabeledArray('{"a": 1}', [e('a')]);
     expect(r, isA<MergeNeedsManual>());
     expect((r as MergeNeedsManual).reason, contains('not a JSON array'));
-  });
-
-  test('isStrictJson', () {
-    expect(isStrictJson('[]'), isTrue);
-    expect(isStrictJson('[1,]'), isFalse);
-    expect(isStrictJson('// c\n[]'), isFalse);
-    expect(isStrictJson(''), isFalse);
   });
 }

@@ -6,6 +6,8 @@ import 'package:flutter_run/src/dap/messages.dart';
 import 'package:flutter_run/src/dap/notices.dart';
 import 'package:test/test.dart';
 
+/// Like the proxy's injector: a request with a timeout fails with a
+/// [TimeoutException] when no answer came in time.
 class FakeInjector implements RequestInjector {
   @override
   bool appStarted = true;
@@ -20,6 +22,13 @@ class FakeInjector implements RequestInjector {
   ]) {
     final c = Completer<DapJson>();
     calls.add((command: command, args: arguments, c: c));
+    if (timeout != null) {
+      Timer(timeout, () {
+        if (!c.isCompleted) {
+          c.completeError(TimeoutException('No response', timeout));
+        }
+      });
+    }
     return c.future;
   }
 
@@ -103,7 +112,7 @@ void main() {
     });
   });
 
-  test('restart during a reload is busy', () {
+  test('a restart during a reload waits for it and then runs', () {
     fakeAsync((fa) {
       setUpHot();
       hot.reload();
@@ -111,12 +120,32 @@ void main() {
       HotResult? r;
       hot.restart().then((v) => r = v);
       fa.flushMicrotasks();
+      expect(r, isNull);
+      expect(injector.calls, hasLength(1));
+      injector.ok(0);
+      fa.flushMicrotasks();
+      expect(injector.calls[1].command, 'hotRestart');
+      injector.ok(1);
+      fa.flushMicrotasks();
+      expect(r!.ok, isTrue);
+      expect(r!.coalesced, isFalse);
+    });
+  });
+
+  test('a restart waits at most the timeout, then answers busy', () {
+    fakeAsync((fa) {
+      setUpHot(timeout: const Duration(seconds: 10));
+      hot.reload(reason: 'save');
+      fa.flushMicrotasks();
+      HotResult? r;
+      hot.restart().then((v) => r = v);
+      fa.elapse(const Duration(seconds: 11));
       expect(r!.error, HotError.busy);
       expect(injector.calls, hasLength(1));
     });
   });
 
-  test('restart during a restart is busy', () {
+  test('a restart during a restart joins it (coalesced), one request', () {
     fakeAsync((fa) {
       setUpHot();
       hot.restart();
@@ -124,11 +153,15 @@ void main() {
       HotResult? r;
       hot.restart().then((v) => r = v);
       fa.flushMicrotasks();
-      expect(r!.error, HotError.busy);
+      injector.ok(0);
+      fa.flushMicrotasks();
+      expect(injector.calls, hasLength(1));
+      expect(r!.ok, isTrue);
+      expect(r!.coalesced, isTrue);
     });
   });
 
-  test('a manual reload during a restart is busy', () {
+  test('a manual reload during a restart waits and then runs', () {
     fakeAsync((fa) {
       setUpHot();
       hot.restart();
@@ -136,8 +169,13 @@ void main() {
       HotResult? r;
       hot.reload().then((v) => r = v);
       fa.flushMicrotasks();
-      expect(r!.error, HotError.busy);
-      expect(injector.calls.single.command, 'hotRestart');
+      expect(r, isNull);
+      injector.ok(0);
+      fa.flushMicrotasks();
+      expect(injector.calls[1].command, 'hotReload');
+      injector.ok(1);
+      fa.flushMicrotasks();
+      expect(r!.ok, isTrue);
     });
   });
 
@@ -161,7 +199,7 @@ void main() {
     });
   });
 
-  test('client restart flag: manual is busy, save queues behind it', () {
+  test('client restart flag: every request waits for it', () {
     fakeAsync((fa) {
       setUpHot();
       hot.noteClientRestart(started: true);
@@ -171,19 +209,40 @@ void main() {
       hot.restart().then((v) => restart = v);
       hot.reload(reason: 'save').then((v) => save = v);
       fa.flushMicrotasks();
-      expect(manual!.error, HotError.busy);
-      expect(restart!.error, HotError.busy);
+      expect(manual, isNull);
+      expect(restart, isNull);
       expect(save, isNull);
       expect(injector.calls, isEmpty);
       hot.noteClientRestart(started: false);
       fa.flushMicrotasks();
+      // The first reload runs; the restart and the other reload wait or join.
       expect(injector.calls.single.command, 'hotReload');
       injector.ok(0);
       fa.flushMicrotasks();
+      expect(manual!.ok, isTrue);
       expect(save!.ok, isTrue);
+      expect(injector.calls[1].command, 'hotRestart');
+      injector.ok(1);
+      fa.flushMicrotasks();
+      expect(restart!.ok, isTrue);
       expect(hot.busy, isFalse);
     });
   });
+
+  test(
+    'client restart that never ends: requests answer busy after the timeout',
+    () {
+      fakeAsync((fa) {
+        setUpHot(timeout: const Duration(seconds: 10));
+        hot.noteClientRestart(started: true);
+        HotResult? r;
+        hot.restart().then((v) => r = v);
+        fa.elapse(const Duration(seconds: 11));
+        expect(r!.error, HotError.busy);
+        expect(injector.calls, isEmpty);
+      });
+    },
+  );
 
   test('timeout: result is timeout, busy until the late response arrives', () {
     fakeAsync((fa) {

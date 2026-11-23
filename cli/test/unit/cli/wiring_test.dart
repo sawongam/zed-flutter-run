@@ -86,10 +86,13 @@ void main() {
       expect(e.message, contains('Compile error'));
     });
 
-    test('a manual reload during a restart maps to busy', () async {
+    test('a reload that never gets its turn maps to busy', () async {
       final injector = _FakeInjector()..hold = Completer<DapJson>();
-      final control = ProxySessionControl(HotActions(injector));
-      final restart = control.restart({});
+      final control = ProxySessionControl(
+        HotActions(injector, timeout: const Duration(milliseconds: 20)),
+      );
+      // The held restart times out too; only the reload's answer matters.
+      final restart = control.restart({}).then<void>((_) {}, onError: (_) {});
       await Future<void>.delayed(Duration.zero);
       final e = await _controlError(control.reload({}));
       expect(e.code, ControlErrorCode.busy);
@@ -195,7 +198,7 @@ void main() {
       expect(result.stdout.trim(), 'args: devices --machine');
     }, skip: Platform.isWindows ? 'needs a shell script' : false);
 
-    test('translates a timeout into a TimeoutException', () async {
+    test('reports a timeout as a ToolTimeoutException', () async {
       final sdk = sdkWithScript('sleep 30');
       final run = await t.wiring.flutterRunnerFactory(
         projectDir: t.dir.path,
@@ -203,15 +206,14 @@ void main() {
       );
       await expectLater(
         run(['devices'], timeout: const Duration(milliseconds: 300)),
-        throwsA(isA<TimeoutException>()),
+        throwsA(isA<ToolTimeoutException>()),
       );
     }, skip: Platform.isWindows ? 'needs a shell script' : false);
 
     test('keeps a spawn failure an ExternalToolException', () async {
       final sdk = makeFakeSdk('${t.dir.path}/sdk');
-      File(
-        '$sdk/bin/flutter',
-      ).writeAsStringSync('#!/nonexistent/interpreter\n');
+      File('$sdk/bin/flutter')
+          .writeAsStringSync('#!/nonexistent/interpreter\n');
       final run = await t.wiring.flutterRunnerFactory(
         projectDir: t.dir.path,
         explicitSdk: sdk,

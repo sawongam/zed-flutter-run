@@ -1,166 +1,266 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/sawongam/zed-flutter-run/main/extension/debug_adapter_schemas/FlutterRun.json",
   "title": "Flutter Run & Debug (FlutterRun) Debug Adapter Configuration",
+  "description": "Configuration of one FlutterRun entry in .zed/debug.json. Unknown keys are allowed on purpose: Dart-Code launch.json entries can be pasted without edits, and the Dart/Flutter debug adapter ignores keys it does not know. Each property's x-support says who handles it: implemented (this extension or its flutter_run proxy), passthrough (forwarded to the Dart/Flutter debug adapter) or ignored (accepted, no effect).",
+  "markdownDescription": "Configuration of one `FlutterRun` entry in `.zed/debug.json`.\n\n`additionalProperties` stays `true` on purpose: Dart-Code `launch.json` entries can be pasted without edits, and the Dart/Flutter debug adapter ignores keys it does not know.\n\nEach property's `x-support` says who handles it: `implemented` (this extension or its `flutter_run` proxy), `passthrough` (forwarded to the Dart/Flutter debug adapter) or `ignored` (accepted, no effect).",
   "type": "object",
   "properties": {
     "adapter": {
       "type": "string",
-      "description": "Must be FlutterRun.",
+      "description": "Selects this debug adapter. Must be FlutterRun.",
+      "markdownDescription": "Selects this debug adapter. Must be `FlutterRun`. Stripped by the `flutter_run` proxy before the config reaches the Dart/Flutter debug adapter.",
       "enum": [
         "FlutterRun"
-      ]
+      ],
+      "x-support": "implemented"
     },
     "label": {
       "type": "string",
-      "description": "Human-readable name for this debug configuration.",
+      "description": "Name shown in the Zed debug picker.",
+      "markdownDescription": "Name shown in the Zed debug picker (F4). Stripped by the proxy before the config reaches the adapter.",
       "examples": [
         "Flutter: Debug"
-      ]
+      ],
+      "x-support": "implemented"
     },
     "request": {
       "type": "string",
-      "description": "Launch a new app or attach to a running one.",
+      "description": "launch starts the app with flutter run (or dart for type dart); attach connects to an app that is already running.",
+      "markdownDescription": "`launch` starts the app (`flutter run` or `dart`). `attach` connects to an app that is already running. Pass `vmServiceUri` (required for `type: dart`); without it a Flutter attach waits for an app to start on the device (the proxy warns after 15 s).",
       "enum": [
         "launch",
         "attach"
       ],
-      "default": "launch"
+      "default": "launch",
+      "x-support": "implemented"
     },
     "type": {
       "type": "string",
-      "description": "Debug a Flutter app or a plain Dart program.",
+      "description": "flutter debugs a Flutter app (flutter debug_adapter); dart debugs a plain Dart program (dart debug_adapter).",
+      "markdownDescription": "`flutter` debugs a Flutter app through `flutter debug_adapter`. `dart` debugs a plain Dart program (for example `bin/main.dart` or a test) through `dart debug_adapter`. The device settings only apply to `flutter`.",
       "enum": [
         "flutter",
         "dart"
       ],
-      "default": "flutter"
+      "default": "flutter",
+      "x-support": "implemented"
     },
     "program": {
       "type": "string",
-      "description": "Entry point to run.",
+      "description": "Dart file to run, relative to cwd. Launch only; ignored for attach. Defaults to lib/main.dart for Flutter launches.",
+      "markdownDescription": "Dart file to run, relative to `cwd`. **Launch only**: ignored for `attach`. The proxy fills in `lib/main.dart` for Flutter launches when it is empty. Use a different entry such as `lib/main_dev.dart` for flavors.",
       "default": "lib/main.dart",
       "examples": [
         "lib/main.dart",
+        "lib/main_dev.dart",
         "bin/main.dart"
-      ]
+      ],
+      "x-support": "passthrough"
     },
     "cwd": {
       "type": "string",
-      "description": "Working directory. Defaults to the worktree root.",
+      "description": "Working directory of the app. Defaults to the worktree root; a relative path is resolved against it.",
+      "markdownDescription": "Working directory of the app. Defaults to the worktree root; a relative path is resolved against the worktree root (not against Zed's own directory).",
       "examples": [
-        "$ZED_WORKTREE_ROOT"
-      ]
+        "$ZED_WORKTREE_ROOT",
+        "$ZED_WORKTREE_ROOT/apps/mobile"
+      ],
+      "x-support": "implemented"
     },
     "args": {
       "type": "array",
-      "description": "Arguments passed to the app.",
+      "description": "Arguments for the Dart program itself (after the program name).",
+      "markdownDescription": "Arguments for your Dart program (what `main(List<String> args)` receives). Tool options such as `--flavor` belong in `toolArgs`.",
       "items": {
         "type": "string"
-      }
+      },
+      "x-support": "passthrough"
     },
     "toolArgs": {
       "type": "array",
-      "description": "Extra arguments for flutter run / flutter attach (for example --flavor dev, -d <id>).",
+      "description": "Extra options for flutter run / flutter attach (or dart), for example [\"--flavor\", \"dev\"]. The proxy adds -d, --profile or --release here when needed.",
+      "markdownDescription": "Extra options for `flutter run` / `flutter attach` (or the `dart` tool for `type: dart`), one array element per word.\n\nThe proxy appends `-d <deviceId>` and `--profile` / `--release` here unless you already set them.",
       "items": {
         "type": "string"
-      }
+      },
+      "examples": [
+        [
+          "--flavor",
+          "dev"
+        ],
+        [
+          "--dart-define=ENV=staging",
+          "--no-sound-null-safety"
+        ],
+        [
+          "-d",
+          "chrome",
+          "--web-port=8080"
+        ]
+      ],
+      "x-support": "passthrough"
     },
     "env": {
       "type": "object",
-      "description": "Environment variables for the debug adapter and the app.",
+      "description": "Environment variables for the proxy and the app. They override the shell environment of the worktree.",
+      "markdownDescription": "Environment variables for the proxy and the app. Values override the shell environment of the worktree; on Windows names are case-insensitive. Numbers and booleans are accepted and converted to text.",
       "additionalProperties": {
         "type": "string"
-      }
+      },
+      "examples": [
+        {
+          "FLUTTER_SUPPRESS_ANALYTICS": "true"
+        }
+      ],
+      "x-support": "implemented"
     },
     "flutterMode": {
       "type": "string",
-      "description": "Build mode for launch. profile and release are added as --profile / --release in toolArgs.",
+      "description": "Build mode for launch: debug, profile or release. Adds --profile or --release to toolArgs unless toolArgs already picks a mode.",
+      "markdownDescription": "Build mode for **launch**. `profile` and `release` add `--profile` / `--release` to `toolArgs`, unless `toolArgs` already selects a mode.",
       "enum": [
         "debug",
         "profile",
         "release"
       ],
-      "default": "debug"
+      "default": "debug",
+      "x-support": "implemented"
     },
     "deviceId": {
       "type": "string",
-      "description": "Device id; the proxy adds -d <id> unless toolArgs already selects a device."
+      "description": "Device id from flutter_run devices (for example linux, chrome, emulator-5554). The proxy adds -d <id> unless toolArgs already has a device.",
+      "markdownDescription": "Device id as shown by `flutter_run devices` or `flutter devices`. The proxy adds `-d <id>` unless `toolArgs` already selects a device. Without it, the proxy tries `FLUTTER_RUN_DEVICE`, then the device saved by *Flutter: Select Device*.",
+      "examples": [
+        "linux",
+        "chrome",
+        "emulator-5554",
+        "macos"
+      ],
+      "x-support": "implemented"
     },
     "platform": {
       "type": "string",
-      "description": "Accepted for copy-paste compatibility with Dart-Code; ignored."
+      "description": "Accepted so Dart-Code launch.json entries can be pasted; the value is ignored. Use deviceId.",
+      "markdownDescription": "Accepted so Dart-Code `launch.json` entries can be pasted; the value is **ignored**. Use `deviceId` instead.",
+      "x-support": "ignored"
     },
     "vmServiceUri": {
       "type": "string",
-      "description": "VM service URI to attach to (request attach). Also set toolArgs with -d <device>."
+      "description": "VM service address of the running app (request attach). Printed by flutter run, for example http://127.0.0.1:50123/abc=/.",
+      "markdownDescription": "VM service address of the running app. **Recommended for `attach`**, and required for `type: dart` unless `vmServiceInfoFile` is set. Without it a Flutter attach waits for an app to appear; Zed's modal \"attach\" cannot ask for it. `flutter run` prints it as *A Dart VM Service ... is available at: ...*.",
+      "examples": [
+        "http://127.0.0.1:50123/abc123=/",
+        "ws://127.0.0.1:50123/abc123=/ws"
+      ],
+      "x-support": "passthrough"
     },
     "vmServiceInfoFile": {
       "type": "string",
-      "description": "File containing JSON {\"uri\": \"ws://...\"} (request attach). The bare-string file written by flutter run --vmservice-out-file does not work (the adapter waits forever); use vmServiceUri instead."
+      "description": "JSON file with {\"uri\": \"ws://...\"} (request attach). The plain-text file of flutter run --vmservice-out-file does not work; use vmServiceUri.",
+      "markdownDescription": "Path of a JSON file such as `{\"uri\": \"ws://127.0.0.1:50123/abc=/ws\"}`. The bare-string file written by `flutter run --vmservice-out-file` does **not** work (the adapter waits forever); use `vmServiceUri` instead.",
+      "examples": [
+        "/tmp/vm-service-info.json"
+      ],
+      "x-support": "passthrough"
     },
     "stopOnEntry": {
       "type": "boolean",
-      "description": "Pause at the first line of the program."
+      "description": "Pause at the first line of the program.",
+      "x-support": "passthrough"
     },
     "noDebug": {
       "type": "boolean",
-      "description": "Run without the debugger attached."
+      "description": "Run without a debugger attached (no breakpoints).",
+      "x-support": "passthrough"
     },
     "debugSdkLibraries": {
       "type": "boolean",
-      "description": "Passed through to the Dart/Flutter debug adapter."
+      "description": "Step into and show Dart SDK libraries (dart:*) while debugging. Forwarded to the Dart/Flutter debug adapter unchanged.",
+      "x-support": "passthrough"
     },
     "debugExternalPackageLibraries": {
       "type": "boolean",
-      "description": "Passed through to the Dart/Flutter debug adapter."
+      "description": "Step into and show code from packages outside your project. Forwarded to the Dart/Flutter debug adapter unchanged.",
+      "x-support": "passthrough"
     },
     "evaluateGettersInDebugViews": {
       "type": "boolean",
-      "description": "Passed through to the Dart/Flutter debug adapter."
+      "description": "Call getters to show their values in Variables and Watch. Forwarded to the Dart/Flutter debug adapter unchanged.",
+      "x-support": "passthrough"
     },
     "evaluateToStringInDebugViews": {
       "type": "boolean",
-      "description": "Passed through to the Dart/Flutter debug adapter."
+      "description": "Call toString() to show readable values in Variables and Watch. Forwarded to the Dart/Flutter debug adapter unchanged.",
+      "x-support": "passthrough"
     },
     "sendLogsToClient": {
       "type": "boolean",
-      "description": "Passed through to the Dart/Flutter debug adapter."
+      "description": "Send the debug adapter's own log to Zed as DAP output events. Forwarded to the Dart/Flutter debug adapter unchanged.",
+      "x-support": "passthrough"
     },
     "useFvm": {
       "type": "boolean",
-      "description": "Require the SDK selected by FVM for the project."
+      "description": "Require the Flutter SDK chosen by FVM for this project; fails with a clear message when FVM has no SDK there.",
+      "markdownDescription": "Require the SDK selected by FVM (`.fvm/flutter_sdk` or `.fvmrc`). When on, only FVM sources are used and the launch fails with a clear message if FVM has no SDK. Run `fvm use` in the project to fix it.",
+      "x-support": "implemented"
     },
     "flutterSdkPath": {
       "type": "string",
-      "description": "Flutter SDK root. First step of SDK resolution."
+      "description": "Flutter SDK root folder. First step of SDK resolution, before FVM and PATH.",
+      "markdownDescription": "Flutter SDK root folder (the one that contains `bin/flutter`). First step of SDK resolution, before FVM and `PATH`.",
+      "examples": [
+        "/opt/flutter",
+        "/home/me/fvm/versions/stable"
+      ],
+      "x-support": "implemented"
     },
     "reloadOnSave": {
       "type": "string",
-      "description": "Hot reload when files are saved: only changed files, every save, or off.",
+      "description": "Hot reload on save: changed (only if a watched file changed), always (every save), off.",
+      "markdownDescription": "Hot reload when you save: `changed` reloads only when file contents changed, `always` reloads on every save, `off` disables it. Watches `lib/` and the folders of `reloadOnSaveGlobs`.",
       "enum": [
         "changed",
         "always",
         "off"
       ],
-      "default": "changed"
+      "default": "changed",
+      "x-support": "implemented"
     },
     "reloadOnSaveGlobs": {
       "type": "array",
-      "description": "Extra globs, relative to the project, that also trigger a reload. Each must start with a directory, for example assets/**.json.",
+      "description": "Extra globs, relative to the project, that also trigger a reload. Each must start with a folder, for example assets/**.json.",
+      "markdownDescription": "Extra globs, relative to the project, that also trigger a reload. Each must start with a folder name because only those folders are watched.",
       "items": {
         "type": "string"
-      }
+      },
+      "examples": [
+        [
+          "assets/**.json"
+        ],
+        [
+          "l10n/*.arb",
+          "config/**"
+        ]
+      ],
+      "x-support": "implemented"
     },
     "reloadOnSaveDebounceMs": {
       "type": "integer",
-      "description": "Wait after the last change (10 to 5000).",
+      "description": "Milliseconds to wait after the last change before reloading (10 to 5000).",
       "minimum": 10,
       "maximum": 5000,
-      "default": 200
+      "default": 200,
+      "examples": [
+        200,
+        500
+      ],
+      "x-support": "implemented"
     },
     "openDevTools": {
       "type": "string",
-      "description": "Page to open in the browser when the app starts (never = do not open). Needs DDS, so not available with --no-dds.",
+      "description": "Page to open in the browser when the app starts; never does nothing. Needs DDS, so it does not work with --no-dds.",
+      "markdownDescription": "Page to open in the browser when the app starts (`never` opens nothing). The proxy builds the URL from the DDS-served DevTools, so it does not work with `--no-dds`.",
       "enum": [
         "never",
         "inspector",
@@ -170,12 +270,49 @@
         "network",
         "logging"
       ],
-      "default": "never"
+      "default": "never",
+      "x-support": "implemented"
     },
     "logFile": {
       "type": "string",
-      "description": "Write the proxy's debug log and DAP traffic to this file."
+      "description": "File that receives the proxy's debug log and all DAP traffic. Off by default; may contain source paths.",
+      "examples": [
+        "/tmp/flutter_run.log"
+      ],
+      "x-support": "implemented"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "request": {
+            "const": "attach"
+          },
+          "type": {
+            "const": "dart"
+          }
+        },
+        "required": [
+          "request",
+          "type"
+        ]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": [
+              "vmServiceUri"
+            ]
+          },
+          {
+            "required": [
+              "vmServiceInfoFile"
+            ]
+          }
+        ]
+      }
+    }
+  ],
   "additionalProperties": true
 }

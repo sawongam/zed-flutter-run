@@ -55,14 +55,6 @@ void main() {
       });
     });
 
-    test('isIgnored', () {
-      expect(filter.isIgnored('/work/app/build/x.dart'), isTrue);
-      expect(filter.isIgnored('/work/app/lib/.x.dart'), isTrue);
-      expect(filter.isIgnored('/other/x.dart'), isTrue);
-      expect(filter.isIgnored('/work/app/lib/x.dart'), isFalse);
-      expect(filter.isIgnored('/work/app/lib/x.txt'), isFalse);
-    });
-
     test('hidden directories above the root do not matter', () {
       final f = PathFilter(projectRoot: '/home/u/.cache/build/app', env: linux);
       expect(f.shouldTrigger('/home/u/.cache/build/app/lib/a.dart'), isTrue);

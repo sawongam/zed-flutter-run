@@ -7,20 +7,9 @@ import 'package:meta/meta.dart';
 
 import '../common/errors.dart';
 import '../common/global_options.dart';
-import '../common/paths.dart';
 import '../common/version.dart';
-import '../control/reload_command.dart';
-import '../control/restart_command.dart';
-import '../control/status_command.dart';
-import '../devices/commands/devices_command.dart';
-import '../devices/commands/emulators_command.dart';
-import '../devices/commands/select_device_command.dart';
-import '../devtools/commands/devtools_command.dart';
-import '../init/commands/init_command.dart';
+import 'commands.dart';
 import 'dap_command.dart';
-import 'doctor_command.dart';
-import 'path_notice.dart';
-import 'version_command.dart';
 import 'wiring.dart';
 
 /// True when [args] ask for debug output (`-v` / `--verbose`).
@@ -33,7 +22,7 @@ bool verboseRequested(Iterable<String> args) {
 }
 
 /// The `flutter_run` command line: registers every command and maps failures
-/// to exit codes (plan §4.1).
+/// to exit codes.
 class FlutterRunRunner extends CommandRunner<int> {
   FlutterRunRunner({Wiring? wiring, Future<void> Function()? flushOutput})
     : this._(wiring ?? Wiring.system(), flushOutput);
@@ -56,80 +45,8 @@ class FlutterRunRunner extends CommandRunner<int> {
       negatable: false,
       help: 'Print the flutter_run version.',
     );
-    final env = wiring.env;
-    final console = wiring.console;
     addCommand(DapCommand(wiring));
-    addCommand(
-      ReloadCommand(
-        store: wiring.sessionStore,
-        client: wiring.controlClient,
-        env: env,
-        console: console,
-      ),
-    );
-    addCommand(
-      RestartCommand(
-        store: wiring.sessionStore,
-        client: wiring.controlClient,
-        env: env,
-        console: console,
-      ),
-    );
-    addCommand(
-      StatusCommand(store: wiring.sessionStore, env: env, console: console),
-    );
-    addCommand(
-      DevicesCommand(
-        runnerFor: wiring.flutterRunnerFactory,
-        store: wiring.deviceStore,
-        env: env,
-        console: console,
-      ),
-    );
-    addCommand(
-      SelectDeviceCommand(
-        runnerFor: wiring.flutterRunnerFactory,
-        store: wiring.deviceStore,
-        env: env,
-        console: console,
-      ),
-    );
-    addCommand(
-      EmulatorsCommand(
-        runnerFor: wiring.flutterRunnerFactory,
-        store: wiring.deviceStore,
-        env: env,
-        console: console,
-      ),
-    );
-    addCommand(
-      DevToolsCommand(
-        resolveTarget: wiring.vmServiceTargetResolver,
-        opener: wiring.browserOpener,
-        env: env,
-        console: console,
-      ),
-    );
-    addCommand(
-      InitCommand(
-        env: env,
-        console: console,
-        findFlutterRunOnPath: () => findExecutableOnPath(toolName, env),
-        pathFixHint: pathFixHint(
-          env.os,
-          env.pathContext.dirname(Platform.resolvedExecutable),
-        ),
-      ),
-    );
-    addCommand(
-      DoctorCommand(
-        sdkResolver: wiring.sdkResolver,
-        sessionStore: wiring.sessionStore,
-        env: env,
-        console: console,
-      ),
-    );
-    addCommand(VersionCommand(console));
+    buildCommands(wiring).forEach(addCommand);
   }
 
   final Wiring wiring;
@@ -148,7 +65,7 @@ Exit codes:
   6    Flutter or Dart SDK not found.
   7    No devices, or an unknown device id.
   8    No pubspec.yaml at or above the directory.
-  9    "init" could not edit a file safely and printed it for you to paste.
+  9    "init" or "keymap" could not edit a file safely and printed it for you to paste.
   10   A flutter, dart or browser command failed.
   130  Interrupted (Ctrl+C).''';
 
@@ -175,7 +92,7 @@ Exit codes:
     StreamSubscription<ProcessSignal>? sigint;
     if (!isDapCommand(args)) {
       try {
-        sigint = ProcessSignal.sigint.watch().listen((_) {
+        sigint = wiring.signals.watch(ProcessSignal.sigint).listen((_) {
           if (!interrupted.isCompleted) {
             interrupted.complete(ExitCodes.interrupted);
           }
@@ -202,7 +119,7 @@ Exit codes:
     return super.runCommand(topLevelResults);
   }
 
-  /// Runs [args] with the top-level error handling of plan §4.1.
+  /// Runs [args], mapping every failure to an exit code.
   Future<int> execute(Iterable<String> args, {bool verbose = false}) async {
     final console = wiring.console;
     try {

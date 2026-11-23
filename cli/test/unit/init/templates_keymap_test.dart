@@ -191,7 +191,9 @@ void main() {
 
     for (final os in HostOs.values) {
       test('snippet for $os parses and uses only task::Spawn', () {
-        final decoded = jsonDecode(keymapSnippet(os)) as List<Object?>;
+        final decoded = jsonDecode(
+          jsonEncode([keymapBlock(KeyChoice.defaults(os))]),
+        ) as List<Object?>;
         expect(decoded, hasLength(1));
         final block = decoded.single! as Map<String, Object?>;
         expect(block['context'], verifiedContext);
@@ -218,9 +220,11 @@ void main() {
       });
 
       test('keepZedRestartKey omits the restart binding on $os', () {
-        final decoded =
-            jsonDecode(keymapSnippet(os, keepZedRestartKey: true))
-                as List<Object?>;
+        final decoded = jsonDecode(
+          jsonEncode([
+            keymapBlock(KeyChoice.defaults(os, keepZedRestartKey: true)),
+          ]),
+        ) as List<Object?>;
         final bindings =
             ((decoded.single! as Map<String, Object?>)['bindings'])!
                 as Map<String, Object?>;
@@ -231,15 +235,61 @@ void main() {
     }
 
     test('key table text', () {
-      final t = keyTable();
+      final t = keyTable(KeyChoice.defaults(HostOs.linux));
       expect(t, contains('F4'));
-      expect(t, contains('F5'));
       expect(t, contains('Shift+F5'));
       expect(t, contains('Ctrl+F5'));
       expect(t, contains('Ctrl+Shift+F5'));
-      expect(t, contains('F5 does nothing while the app runs'));
-      expect(t, contains('Flutter: Run (no debug)'));
+      expect(t, contains('(no debug)'));
       expect(t, isNot(contains('\r')));
+      expect(
+        keyTable(const KeyChoice(reload: 'ctrl-s')),
+        allOf(contains('Ctrl+S'), isNot(contains('Hot restart'))),
+      );
+    });
+
+    test('normalizeKey accepts Zed and human forms', () {
+      expect(normalizeKey('ctrl-shift-s'), 'ctrl-shift-s');
+      expect(normalizeKey('Ctrl+Shift+S'), 'ctrl-shift-s');
+      expect(normalizeKey(' cmd-k cmd-r '), 'cmd-k cmd-r');
+      expect(normalizeKey('F5'), 'f5');
+      for (final bad in ['', 'ctrl-', 'ctrl', 'hyper-s', 'ctrl-ctrl-s']) {
+        expect(normalizeKey(bad), isNull, reason: bad);
+      }
+    });
+
+    test('displayKey', () {
+      expect(displayKey('ctrl-shift-f5'), 'Ctrl+Shift+F5');
+      expect(displayKey('shift-cmd-f5'), 'Shift+Cmd+F5');
+      expect(displayKey('ctrl-alt-shift-d'), 'Ctrl+Alt+Shift+D');
+    });
+
+    test('keyConflicts', () {
+      expect(
+        keyConflicts('ctrl-f5', HostOs.macos, baseKeymap: 'SublimeText'),
+        contains(contains('sort lines')),
+      );
+      expect(
+        keyConflicts('ctrl-f5', HostOs.linux, baseKeymap: 'JetBrains'),
+        contains(contains('rerun the last task')),
+      );
+      expect(
+        keyConflicts('ctrl-shift-s', HostOs.linux),
+        contains(contains('Save As')),
+      );
+      expect(
+        keyConflicts('ctrl-s', HostOs.linux, baseKeymap: 'Emacs'),
+        contains(contains('Emacs')),
+      );
+      expect(
+        keyConflicts('ctrl-s', HostOs.linux, vimMode: true),
+        contains(contains('Vim')),
+      );
+      expect(
+        keyConflicts('shift-ctrl-f5', HostOs.windows),
+        contains(contains('restart debug session')),
+      );
+      expect(keyConflicts('ctrl-alt-shift-d', HostOs.linux), isEmpty);
     });
 
     test('macOS note mentions fn key', () {

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../common/json_types.dart';
+import 'jsonc.dart';
 
 sealed class MergeResult {
   const MergeResult();
@@ -33,16 +34,6 @@ const JsonEncoder _encoder = JsonEncoder.withIndent('  ');
 /// 2-space indented JSON, LF, trailing newline.
 String encodeJsonFile(Object? value) => '${_encoder.convert(value)}\n';
 
-/// True when [text] parses as strict JSON (no comments, no trailing commas).
-bool isStrictJson(String text) {
-  try {
-    jsonDecode(text);
-    return true;
-  } on FormatException {
-    return false;
-  }
-}
-
 /// Merges [additions] into the JSON array in [existingText], keyed by
 /// `label`. Existing entries and their order are kept; only entries whose
 /// label is missing are appended. `null` means the file does not exist.
@@ -62,19 +53,18 @@ MergeResult mergeLabeledArray(String? existingText, List<Json> additions) {
       : existingText;
   if (text.trim().isEmpty) return MergeCreated(encodeJsonFile(wanted));
   Object? decoded;
+  var jsonc = false;
   try {
     decoded = jsonDecode(text);
   } on FormatException {
-    final looksLikeJsonc =
-        text.contains('//') ||
-        text.contains('/*') ||
-        RegExp(r',\s*[\]}]').hasMatch(text);
-    return MergeNeedsManual(
-      reason: looksLikeJsonc
-          ? 'it has comments or trailing commas'
-          : 'it is not valid JSON',
-      snippet: snippet,
-    );
+    // Zed's new-file template is JSON with comments. Appending as text keeps
+    // the user's comments, which re-encoding would drop.
+    try {
+      decoded = decodeJsonc(text);
+      jsonc = true;
+    } on FormatException {
+      return MergeNeedsManual(reason: 'it is not valid JSON', snippet: snippet);
+    }
   }
   if (decoded is! List<Object?>) {
     return MergeNeedsManual(reason: 'it is not a JSON array', snippet: snippet);
@@ -93,8 +83,13 @@ MergeResult mergeLabeledArray(String? existingText, List<Json> additions) {
       kept: wanted.length - missing.length,
     );
   }
+  var content = jsonc ? existingText : null;
+  for (final entry in missing) {
+    if (content == null) break;
+    content = appendToJsoncArray(content, encodeJsonFile(entry));
+  }
   return MergeUpdated(
-    encodeJsonFile(<Object?>[...decoded, ...missing]),
+    content ?? encodeJsonFile(<Object?>[...decoded, ...missing]),
     added: missing.length,
     kept: wanted.length - missing.length,
   );

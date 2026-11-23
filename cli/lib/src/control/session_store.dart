@@ -2,21 +2,30 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../common/clock.dart';
 import '../common/files.dart';
 import '../common/host_environment.dart';
 import '../common/json_types.dart';
 import '../common/logger.dart';
+import '../common/paths.dart';
 import 'control_client.dart';
 import 'session_info.dart';
-import 'session_paths.dart';
+
+/// `<stateBaseDirectory>/sessions`.
+String sessionsDirectory(HostEnvironment env) =>
+    env.pathContext.join(stateBaseDirectory(env), 'sessions');
+
+/// `<pid>.json`.
+String sessionFileName(int pid) => '$pid.json';
 
 /// Owner-side handle on a session file.
 class SessionHandle {
-  SessionHandle._(this.path, this._env);
+  SessionHandle._(this.path, this._env, this._clock);
 
   /// Full path of the `<pid>.json` file.
   final String path;
   final HostEnvironment _env;
+  final Clock _clock;
   Future<void> _tail = Future<void>.value();
   bool _deleted = false;
 
@@ -38,13 +47,13 @@ class SessionHandle {
   /// Deletes the file (idempotent).
   Future<void> delete() {
     _deleted = true;
-    final next = _tail.then((_) => _deleteFile(path, retries: 10));
+    final next = _tail.then((_) => _deleteFile(path, _clock, retries: 10));
     _tail = next;
     return next;
   }
 }
 
-Future<void> _deleteFile(String path, {int retries = 1}) async {
+Future<void> _deleteFile(String path, Clock clock, {int retries = 1}) async {
   for (var attempt = 1; ; attempt++) {
     try {
       final file = File(path);
@@ -53,7 +62,7 @@ Future<void> _deleteFile(String path, {int retries = 1}) async {
     } on FileSystemException {
       if (!File(path).existsSync()) return;
       if (attempt >= retries) return;
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await clock.delay(const Duration(milliseconds: 50));
     }
   }
 }
@@ -75,13 +84,18 @@ class SessionRecord {
 
 /// Reads and writes the per-user session files.
 class SessionStore {
-  SessionStore(this._env, {Logger? logger, ControlClient? probe})
-    : _logger = logger ?? Logger.silent(),
-      _probe = probe ?? ControlClient();
+  SessionStore(
+    this._env, {
+    Logger? logger,
+    ControlClient? probe,
+    this._clock = const SystemClock(),
+  }) : _logger = logger ?? Logger.silent(),
+       _probe = probe ?? ControlClient(env: _env);
 
   final HostEnvironment _env;
   final Logger _logger;
   final ControlClient _probe;
+  final Clock _clock;
 
   /// Creates the sessions directory (mode 0700 on POSIX) and writes the file.
   Future<SessionHandle> create(SessionInfo info) async {
@@ -90,6 +104,7 @@ class SessionStore {
     final handle = SessionHandle._(
       _env.pathContext.join(directory, sessionFileName(info.pid)),
       _env,
+      _clock,
     );
     await handle.update(info);
     return handle;
@@ -106,7 +121,7 @@ class SessionStore {
     try {
       for (final entity in directory.listSync(followLinks: false)) {
         if (entity is! File || !entity.path.endsWith('.json')) continue;
-        final info = _read(entity);
+        final info = await _read(entity);
         if (info != null) candidates.add((entity.path, info));
       }
     } on FileSystemException catch (e) {
@@ -135,15 +150,15 @@ class SessionStore {
   /// Deletes [path] only if it still holds the session we pinged (a new
   /// process may have reused the pid and rewritten the file meanwhile).
   Future<void> _deleteIfUnchanged(String path, SessionInfo pinged) async {
-    final current = _read(File(path));
+    final current = await _read(File(path));
     if (current == null) return;
     if (current.token != pinged.token || current.pid != pinged.pid) return;
-    await _deleteFile(path);
+    await _deleteFile(path, _clock);
   }
 
-  SessionInfo? _read(File file) {
+  Future<SessionInfo?> _read(File file) async {
     try {
-      final decoded = jsonDecode(_readText(file));
+      final decoded = jsonDecode(await _readText(file));
       if (decoded is! Json) {
         _logger.debug('Skipping ${file.path}: not a JSON object.');
         return null;
@@ -156,17 +171,17 @@ class SessionStore {
     }
     return null;
   }
-}
 
-/// Reads [file], retrying briefly on a sharing violation: on Windows a read
-/// can collide with the owner's atomic rename of a new version.
-String _readText(File file) {
-  for (var attempt = 1; ; attempt++) {
-    try {
-      return file.readAsStringSync();
-    } on FileSystemException {
-      if (attempt >= 5 || !file.existsSync()) rethrow;
-      sleep(const Duration(milliseconds: 20));
+  /// Reads [file], retrying briefly on a sharing violation: on Windows a read
+  /// can collide with the owner's atomic rename of a new version.
+  Future<String> _readText(File file) async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return file.readAsStringSync();
+      } on FileSystemException {
+        if (attempt >= 5 || !file.existsSync()) rethrow;
+        await _clock.delay(const Duration(milliseconds: 20));
+      }
     }
   }
 }

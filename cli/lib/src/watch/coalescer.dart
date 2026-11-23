@@ -1,21 +1,23 @@
 import 'dart:async';
 
+import '../common/clock.dart';
+
 /// Outcome of one reload attempt.
 enum ReloadResult { done, busy }
 
 /// Trailing-edge debounce plus "one in flight, one follow-up" coalescing.
 class ReloadCoalescer {
   ReloadCoalescer({
-    required Duration debounce,
-    required Future<ReloadResult> Function() reload,
-    void Function(Object, StackTrace)? onError,
-  }) : _debounce = debounce,
-       _reload = reload,
-       _onError = onError;
+    required this._debounce,
+    required this._reload,
+    this._onError,
+    this._clock = const SystemClock(),
+  });
 
   final Duration _debounce;
   final Future<ReloadResult> Function() _reload;
   final void Function(Object, StackTrace)? _onError;
+  final Clock _clock;
 
   static const Duration _maxBusyDelay = Duration(seconds: 2);
 
@@ -41,7 +43,7 @@ class ReloadCoalescer {
 
   void _arm(Duration delay) {
     _timer?.cancel();
-    _timer = Timer(delay, () {
+    _timer = _clock.timer(delay, () {
       _timer = null;
       if (_disposed || _inFlight) return;
       unawaited(_run());

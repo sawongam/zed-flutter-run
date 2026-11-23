@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import '../common/clock.dart';
 import '../common/json_types.dart';
+import 'bounded.dart';
 import 'messages.dart';
 import 'notices.dart';
 
@@ -18,6 +20,9 @@ abstract interface class RequestInjector {
 }
 
 enum HotError { notStarted, busy, adapterError, timeout, sessionEnded }
+
+/// What a [HotError.busy] result says.
+const String busyMessage = 'Another hot reload or restart is still running.';
 
 class HotResult {
   const HotResult({
@@ -64,6 +69,7 @@ class HotActions {
     this._injector, {
     this.timeout = const Duration(seconds: 120),
     this.waitingNoticeAfter = const Duration(seconds: 3),
+    this._clock = const SystemClock(),
   });
 
   static const Duration _lateLimit = Duration(minutes: 10);
@@ -71,11 +77,13 @@ class HotActions {
   final RequestInjector _injector;
   final Duration timeout;
   final Duration waitingNoticeAfter;
+  final Clock _clock;
 
   _Flight? _current;
   bool _clientRestart = false;
   Completer<void>? _clientRestartDone;
 
+  /// True while a hot action or a client `restart` is in flight.
   bool get busy => _current != null || _clientRestart;
 
   Future<HotResult> reload({String reason = 'manual'}) =>
@@ -98,9 +106,12 @@ class HotActions {
     if (done != null && !done.isCompleted) done.complete();
   }
 
+  // A key pressed while another action runs must not fail: with reload on
+  // save, a reload is often already running when the user asks for a
+  // restart. So a request waits for the running action (at most [timeout])
+  // and then runs, except that it joins a running action of the same kind.
   Future<HotResult> _request(_Action action, String reason) async {
     final name = action == _Action.reload ? 'reload' : 'restart';
-    final waitsForRestart = action == _Action.reload && reason == 'save';
     while (true) {
       if (!_injector.appStarted) {
         _injector.notice(
@@ -110,50 +121,42 @@ class HotActions {
         return const HotResult(ok: false, error: HotError.notStarted);
       }
       if (_clientRestart) {
-        if (!waitsForRestart) return _busy();
         final done = _clientRestartDone;
-        if (done != null) {
-          await done.future.timeout(timeout, onTimeout: () {});
-        }
+        if (done != null) await _waitAtMostTimeout(done.future);
         if (_clientRestart) return _busy();
         continue;
       }
       final flight = _current;
       if (flight == null) return _run(action, reason);
       if (flight.timedOut) return _busy();
-      if (flight.action == _Action.reload && action == _Action.reload) {
+      if (flight.action == action) {
         final shared = await flight.result.future;
         return shared._asCoalesced();
       }
-      if (flight.action == _Action.restart && waitsForRestart) {
-        await flight.result.future;
-        continue;
-      }
-      return _busy();
+      await _waitAtMostTimeout(flight.result.future);
+      if (identical(_current, flight)) return _busy();
     }
   }
 
-  HotResult _busy() => const HotResult(
-    ok: false,
-    error: HotError.busy,
-    message: 'Another hot reload or restart is still running.',
-  );
+  Future<void> _waitAtMostTimeout(Future<Object?> future) =>
+      withTimeout<void>(_clock, future.then((_) {}), timeout, onTimeout: () {});
+
+  HotResult _busy() =>
+      const HotResult(ok: false, error: HotError.busy, message: busyMessage);
 
   Future<HotResult> _run(_Action action, String reason) {
     final flight = _Flight(action);
     _current = flight;
-    final watch = Stopwatch()..start();
+    final watch = _clock.stopwatch()..start();
     final isReload = action == _Action.reload;
     final command = isReload ? 'hotReload' : 'hotRestart';
     final noun = isReload ? 'Reload' : 'Restart';
     Timer? waitingTimer;
     Timer? timeoutTimer;
-    Timer? lateTimer;
 
     void finish() {
       waitingTimer?.cancel();
       timeoutTimer?.cancel();
-      lateTimer?.cancel();
       if (identical(_current, flight)) _current = null;
     }
 
@@ -161,7 +164,7 @@ class HotActions {
       if (!flight.result.isCompleted) flight.result.complete(result);
     }
 
-    waitingTimer = Timer(waitingNoticeAfter, () {
+    waitingTimer = _clock.timer(waitingNoticeAfter, () {
       if (flight.result.isCompleted) return;
       _injector.notice('$noun is waiting for the debugger to resume.');
     });
@@ -169,7 +172,7 @@ class HotActions {
     // breakpoint); the late limit in the injector still bounds it.
     final noTimeout = isReload && reason == 'save';
     if (!noTimeout) {
-      timeoutTimer = Timer(timeout, () {
+      timeoutTimer = _clock.timer(timeout, () {
         if (flight.result.isCompleted) return;
         flight.timedOut = true;
         final seconds = timeout.inSeconds;
@@ -187,8 +190,8 @@ class HotActions {
         );
       });
     }
-    lateTimer = Timer(_lateLimit, finish);
-
+    // [_lateLimit] bounds the injected request itself: when it expires the
+    // request fails with a TimeoutException, which ends this flight.
     Future<DapJson> pending;
     try {
       pending = _injector.inject(command, <String, Object?>{
@@ -197,37 +200,40 @@ class HotActions {
     } on Object catch (e) {
       pending = Future<DapJson>.error(e);
     }
-    pending.then(
-      (response) {
-        watch.stop();
-        final timedOut = flight.timedOut;
-        finish();
-        if (timedOut) return;
-        complete(_fromResponse(action, reason, response, watch.elapsed));
-      },
-      onError: (Object e) {
-        watch.stop();
-        finish();
-        if (e is TimeoutException) {
-          complete(
-            HotResult(
-              ok: false,
-              error: HotError.timeout,
-              message: 'No answer from the app in time.',
-              duration: watch.elapsed,
-            ),
-          );
-        } else {
-          complete(
-            HotResult(
-              ok: false,
-              error: HotError.sessionEnded,
-              message: 'The debug session has ended.',
-              duration: watch.elapsed,
-            ),
-          );
-        }
-      },
+    // The result is delivered through the caller's completer, not this chain.
+    unawaited(
+      pending.then(
+        (response) {
+          watch.stop();
+          final timedOut = flight.timedOut;
+          finish();
+          if (timedOut) return;
+          complete(_fromResponse(action, reason, response, watch.elapsed));
+        },
+        onError: (Object e) {
+          watch.stop();
+          finish();
+          if (e is TimeoutException) {
+            complete(
+              HotResult(
+                ok: false,
+                error: HotError.timeout,
+                message: 'No answer from the app in time.',
+                duration: watch.elapsed,
+              ),
+            );
+          } else {
+            complete(
+              HotResult(
+                ok: false,
+                error: HotError.sessionEnded,
+                message: 'The debug session has ended.',
+                duration: watch.elapsed,
+              ),
+            );
+          }
+        },
+      ),
     );
     return flight.result.future;
   }

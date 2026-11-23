@@ -77,7 +77,7 @@ void main() {
     });
   });
 
-  group('toolArgs hardening (C10)', () {
+  group('toolArgs hardening', () {
     test('a non-list toolArgs is ignored with a note', () {
       final r = rewriter(saved: 's').rewrite('launch', {'toolArgs': '-d x'});
       expect(r.notes.single, contains('toolArgs must be a list'));
@@ -95,7 +95,7 @@ void main() {
     });
   });
 
-  group('S5 device id validation', () {
+  group('device id validation', () {
     LaunchRewriter strict({
       Map<String, String> env = const {},
       String? saved,
@@ -139,9 +139,10 @@ void main() {
         isFalse,
       );
       expect(
-        rewriter(
-          kind: DapKind.dart,
-        ).rewrite('launch', {}).arguments.containsKey('program'),
+        rewriter(kind: DapKind.dart)
+            .rewrite('launch', {})
+            .arguments
+            .containsKey('program'),
         isFalse,
       );
       expect(
@@ -295,9 +296,8 @@ void main() {
     }
 
     test('mode flag comes before the device flag', () {
-      final r = rewriter(
-        saved: 's',
-      ).rewrite('launch', {'flutterMode': 'profile'});
+      final r = rewriter(saved: 's')
+          .rewrite('launch', {'flutterMode': 'profile'});
       expect(r.arguments['toolArgs'], ['--profile', '-d', 's']);
     });
 
@@ -317,8 +317,8 @@ void main() {
   group('deviceHintFor', () {
     test('several devices', () {
       for (final text in [
-        'More than one device connected; please specify a device with the '
-            "'-d <deviceId>' flag, or use '-d all' to act on all devices.",
+        ('More than one device connected; please specify a device with the '
+            "'-d <deviceId>' flag, or use '-d all' to act on all devices."),
         'more than one device connected',
       ]) {
         expect(deviceHintFor(text), contains('Flutter: Select Device'));
@@ -371,6 +371,52 @@ void main() {
         out,
         '\x1b[36m[flutter_run] a\x1b[0m\n\x1b[36m[flutter_run] b\x1b[0m\n',
       );
+    });
+  });
+
+  group('attach validation', () {
+    test('the placeholder from init is rejected with guidance', () {
+      final r = rewriter().rewrite('attach', {
+        'vmServiceUri': 'ws://127.0.0.1:PORT/TOKEN=/ws',
+      });
+      expect(r.rejection, contains('flutter run'));
+      expect(r.rejection, contains('vmServiceUri'));
+    });
+
+    test('a real address or an info file is accepted', () {
+      expect(
+        rewriter().rewrite('attach', {
+          'vmServiceUri': 'ws://127.0.0.1:5000/abc=/ws',
+        }).rejection,
+        isNull,
+      );
+      expect(
+        rewriter().rewrite('attach', {
+          'vmServiceInfoFile': '/tmp/vm.json',
+        }).rejection,
+        isNull,
+      );
+    });
+
+    test('the dart adapter needs an address or an info file', () {
+      final dart = rewriter(kind: DapKind.dart);
+      expect(dart.rewrite('attach', {}).rejection, isNotNull);
+      expect(
+        dart.rewrite('attach', {'vmServiceUri': '  '}).rejection,
+        isNotNull,
+      );
+    });
+
+    test('flutter attach may wait for the app to start', () {
+      expect(rewriter().rewrite('attach', {}).rejection, isNull);
+      expect(
+        rewriter(saved: 'emulator-1').rewrite('attach', {}).rejection,
+        isNull,
+      );
+    });
+
+    test('launch is never rejected', () {
+      expect(rewriter().rewrite('launch', {}).rejection, isNull);
     });
   });
 }

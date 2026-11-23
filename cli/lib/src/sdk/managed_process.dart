@@ -10,22 +10,33 @@ import 'process_tree.dart';
 
 /// A child process we started and may have to clean up with its descendants.
 class ManagedProcess {
-  ManagedProcess._(this._process, this._host, this._logger, this._spec) {
-    _exited = false;
-    _process.exitCode.then((_) => _exited = true, onError: (Object _) {});
+  ManagedProcess._(
+    this._process,
+    this._host,
+    this._runProcess,
+    this._logger,
+    this._spec,
+  ) {
+    unawaited(
+      _process.exitCode.then((_) => _exited = true, onError: (Object _) {}),
+    );
   }
 
   final Process _process;
   final HostEnvironment _host;
+  final ProcessResultRunner _runProcess;
   final Logger _logger;
   final ProcessSpec _spec;
-  late bool _exited;
+  bool _exited = false;
   final Map<int, String> _startTimes = <int, String>{};
 
   /// Starts [spec] directly (never through a shell). [environment] is added to
-  /// the inherited environment.
+  /// the inherited environment. [host] and [runProcess] are used to read the
+  /// process table and end the tree when it is cleaned up.
   static Future<ManagedProcess> start(
     ProcessSpec spec, {
+    required HostEnvironment host,
+    ProcessResultRunner runProcess = Process.run,
     Map<String, String>? environment,
     Logger? logger,
   }) async {
@@ -39,12 +50,11 @@ class ManagedProcess {
         runInShell: false,
       );
       log.debug('Started ${spec.executable} (pid ${process.pid}).');
-      return ManagedProcess._(process, HostEnvironment.system(), log, spec);
+      return ManagedProcess._(process, host, runProcess, log, spec);
     } on ProcessException catch (e) {
       throw ExternalToolException(
         'Could not start ${spec.executable}: ${e.message}',
-        hint:
-            'Check that the file exists and can be run, then try again. Run "flutter_run doctor" to see which SDK was chosen.',
+        hint: 'Check that the file exists and can be run, then try again. Run "flutter_run doctor" to see which SDK was chosen.',
         cause: e,
       );
     }
@@ -59,15 +69,20 @@ class ManagedProcess {
   /// Pids of all current descendants (from `ps` on POSIX, PowerShell/wmic on
   /// Windows). Just this pid when the process table cannot be read.
   Future<Set<int>> snapshotDescendants() async {
-    final table = await readProcessTable(_host);
+    final table = await readProcessTable(_host, runProcess: _runProcess);
     if (table.byPid.isEmpty) return <int>{pid}; // table unreadable
+    return _recordStartTimes(table);
+  }
+
+  /// Remembers the start time of this process and its descendants, so a pid
+  /// reused later by an unrelated process is not killed. Returns the
+  /// descendants.
+  Set<int> _recordStartTimes(ProcessTable table) {
     final descendants = collectDescendants(table.childrenOf, pid);
-    for (final d in descendants) {
+    for (final d in [...descendants, pid]) {
       final start = table.byPid[d]?.startTime;
       if (start != null) _startTimes[d] = start;
     }
-    final rootStart = table.byPid[pid]?.startTime;
-    if (rootStart != null) _startTimes[pid] = rootStart;
     // Forget processes that no longer exist so the map stays bounded.
     _startTimes.removeWhere((pid, _) => !table.byPid.containsKey(pid));
     return descendants;
@@ -82,16 +97,13 @@ class ManagedProcess {
     Duration grace = const Duration(seconds: 2),
     bool crashed = false,
   }) async {
-    if (!_exited) {
-      try {
-        await snapshotDescendants();
-      } on Object catch (e) {
-        _logger.debug('Could not snapshot the process tree: $e');
-      }
-    }
     var all = <int>{...extraPids};
     if (crashed && all.isNotEmpty) {
-      final commands = await readCommandLines(all, _host);
+      final commands = await readCommandLines(
+        all,
+        _host,
+        runProcess: _runProcess,
+      );
       all = {
         for (final pid in all)
           if (commands[pid] != null && !isSharedDaemonCommand(commands[pid]!))
@@ -102,7 +114,25 @@ class ManagedProcess {
     _logger.debug(
       'Terminating process tree of pid $pid (${all.length} others).',
     );
-    await killTree(root, all, _host, grace: grace, startTimes: _startTimes);
+    // killTree reads the table anyway; record the start times from its first
+    // read instead of running a separate snapshot first.
+    var recorded = _exited;
+    Future<ProcessTable> readTable() async {
+      final table = await readProcessTable(_host, runProcess: _runProcess);
+      if (!recorded && table.byPid.isNotEmpty) _recordStartTimes(table);
+      recorded = true;
+      return table;
+    }
+
+    await killTree(
+      root,
+      all,
+      _host,
+      grace: grace,
+      startTimes: _startTimes,
+      readTable: readTable,
+      runProcess: _runProcess,
+    );
     if (!_exited) {
       try {
         await _process.exitCode.timeout(const Duration(seconds: 2));
@@ -125,15 +155,17 @@ class ToolOutput {
 }
 
 /// Runs [spec] to completion and collects its output. On [timeout] the whole
-/// process tree is killed and an [ExternalToolException] is thrown.
+/// process tree is killed and a [ToolTimeoutException] is thrown.
 Future<ToolOutput> runTool(
   ProcessSpec spec, {
+  required HostEnvironment host,
   Map<String, String>? environment,
   Duration timeout = const Duration(seconds: 60),
   Logger? logger,
 }) async {
   final process = await ManagedProcess.start(
     spec,
+    host: host,
     environment: environment,
     logger: logger,
   );
@@ -151,10 +183,9 @@ Future<ToolOutput> runTool(
     await process.terminateTree();
     unawaited(out.then((_) {}, onError: (Object _) {}));
     unawaited(err.then((_) {}, onError: (Object _) {}));
-    throw ExternalToolException(
+    throw ToolTimeoutException(
       '${spec.executable} did not finish within ${timeout.inSeconds} seconds and was stopped.',
-      hint:
-          'Try again; if it keeps happening run the same command in a terminal to see what it waits for.',
+      hint: 'Try again; if it keeps happening run the same command in a terminal to see what it waits for.',
     );
   }
 }
