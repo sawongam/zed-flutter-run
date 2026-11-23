@@ -86,10 +86,13 @@ void main() {
       expect(e.message, contains('Compile error'));
     });
 
-    test('a manual reload during a restart maps to busy', () async {
+    test('a reload that never gets its turn maps to busy', () async {
       final injector = _FakeInjector()..hold = Completer<DapJson>();
-      final control = ProxySessionControl(HotActions(injector));
-      final restart = control.restart({});
+      final control = ProxySessionControl(
+        HotActions(injector, timeout: const Duration(milliseconds: 20)),
+      );
+      // The held restart times out too; only the reload's answer matters.
+      final restart = control.restart({}).then<void>((_) {}, onError: (_) {});
       await Future<void>.delayed(Duration.zero);
       final e = await _controlError(control.reload({}));
       expect(e.code, ControlErrorCode.busy);

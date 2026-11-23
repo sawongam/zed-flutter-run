@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [dev, prod]
     paths-ignore: ["docs/**", "**.md"]
   # No paths-ignore on pull_request: required checks must always report,
   # or docs-only PRs could never be merged under branch protection.
@@ -203,7 +203,7 @@ jobs:
           - { name: pinned, channel: stable, version: "3.47.9", experimental: false }
           # No "oldest" leg: the test dependencies (test ^1.33, analyzer) need
           # Dart >= 3.13, so the suite cannot run on older Flutter SDKs. Older
-          # Flutter versions are untested; see docs/COMPATIBILITY.md.
+          # Flutter versions are untested; see README.md.
           # Early warning for upcoming breakage; never blocks.
           - { name: beta, channel: beta, version: "", experimental: true }
     defaults:

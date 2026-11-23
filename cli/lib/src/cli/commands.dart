@@ -12,6 +12,7 @@ import '../devices/commands/emulators_command.dart';
 import '../devices/commands/select_device_command.dart';
 import '../devtools/commands/devtools_command.dart';
 import '../init/commands/init_command.dart';
+import '../init/commands/keymap_command.dart';
 import 'doctor_command.dart';
 import 'path_notice.dart';
 import 'version_command.dart';
@@ -70,6 +71,7 @@ List<Command<int>> buildCommands(Wiring wiring) {
         env.pathContext.dirname(Platform.resolvedExecutable),
       ),
     ),
+    KeymapCommand(env: env, console: console),
     DoctorCommand(
       sdkResolver: wiring.sdkResolver,
       sessionStore: wiring.sessionStore,

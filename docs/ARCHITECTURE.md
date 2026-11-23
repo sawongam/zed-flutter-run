@@ -1,6 +1,6 @@
 # Architecture
 
-How the parts fit together and where the code is. [DESIGN.md](DESIGN.md) explains why it is built this way. [CONFIGURATION.md](CONFIGURATION.md) lists every key, flag and exit code. [EXTENDING.md](EXTENDING.md) has recipes for common changes.
+How the parts fit together and where the code is. [DESIGN.md](DESIGN.md) explains why it is built this way. [CONFIGURATION.md](CONFIGURATION.md) lists every key, flag and exit code.
 
 `zed-flutter-run` has two parts. A Rust extension (`extension/`, compiled to WebAssembly) registers the debug adapter `FlutterRun` with Zed and tells Zed how to start it. A Dart executable (`cli/`, compiled with `dart compile exe`) does all the work. As `flutter_run dap` it is the adapter that Zed talks to: a proxy in front of `flutter debug_adapter` (or `dart debug_adapter`) that adds hot reload, reload on save, device selection and DevTools. As `flutter_run <command>` it is the command line that Zed tasks run.
 
@@ -63,7 +63,7 @@ Launch rewriting (`launch_rewriter.dart`): `LaunchRewriter.rewrite` removes the 
 
 Injected requests (`injected_requests.dart`): requests the proxy sends itself (`hotReload`, `hotRestart`, `terminate`, `disconnect`) and the notices it makes up use sequence numbers from 1,000,000,000 up. Client numbers are never changed. A client number in that range is logged and reported. `supportedInjections` says which adapter kind accepts `hotReload` and `hotRestart`. The Dart adapter has no hot restart.
 
-`HotActions` (`hot_actions.dart`) runs reload and restart. One action runs at a time. A second reload joins the running one (`coalesced`). A reload during a restart, or the reverse, answers `busy`, except a reload caused by a save, which waits for the restart. Nothing is sent before `flutter.appStarted`. The default timeout is 120 seconds and a notice appears after 3 seconds of waiting.
+`HotActions` (`hot_actions.dart`) runs reload and restart. One action runs at a time. A request for the action that is already running joins it (`coalesced`). A request for the other action, or any request during a client `restart`, waits for the running one and then runs; if it is still running after the timeout, the answer is `busy`. Nothing is sent before `flutter.appStarted`. The default timeout is 120 seconds and a notice appears after 3 seconds of waiting.
 
 Lifecycle: `SessionPhaseMachine` (`session_phase.dart`) moves `SessionPhase` through `starting`, `running`, `stopping`, `finishing` and `finished`, forward only. `stopping` may be skipped by a crash or a failed start. An illegal move is logged and ignored.
 
@@ -151,7 +151,7 @@ The session file is `<state>/sessions/<pid>.json`. The directory is created with
 {"v":1,"id":1,"ok":false,"error":{"code":"busy","message":"..."}}
 ```
 
-The commands are `ping` (result `pid`, `version`, `protocol`), `reload` (`durationMs`, `coalesced`) and `restart` (`durationMs`). Error codes are in `ControlErrorCode`: `bad_request`, `unsupported_version`, `unauthorized`, `payload_too_large`, `unknown_command`, `app_not_started`, `busy`, `adapter_error`, `timeout`, `session_ended` and `internal`. The token is compared in constant time.
+The commands are `ping` (result `pid`, `version`, `protocol`), `reload` (`durationMs`, `coalesced`) and `restart` (`durationMs`, `coalesced`). Error codes are in `ControlErrorCode`: `bad_request`, `unsupported_version`, `unauthorized`, `payload_too_large`, `unknown_command`, `app_not_started`, `busy`, `adapter_error`, `timeout`, `session_ended` and `internal`. The token is compared in constant time.
 
 Limits: a request line is at most 64 KiB and must arrive within 3 seconds. At most 64 connections are open and at most 16 of them may be waiting for a line. A connection over the limit gets `busy` with `id: null`.
 
@@ -198,7 +198,7 @@ All of this is under `cli/lib/src/`.
 | `devices/` | Device and emulator listing, `DeviceStore`, the picker, the `devices`, `select-device` and `emulators` commands |
 | `watch/` | Reload-on-save settings, path filter, content hashes, coalescer, watcher |
 | `devtools/` | Page names, URL building, browser opener, the `devtools` command |
-| `init/` | Project detection, scenario and task templates, JSON merge, keymap snippet, the `init` command |
+| `init/` | Project detection (entry points from `.vscode/launch.json` or `lib/main_<flavor>.dart`, local packages), scenario and task templates, JSON and JSONC merge, key bindings and their known clashes, the `init` and `keymap` commands |
 | `cli/` | `FlutterRunRunner`, `Wiring`, `buildCommands`, `DapCommand`, `DapSessionHost`, `SessionNotices`, `doctor` and `version` |
 
 Import rule: `common/` imports no other module, each feature module imports only `common/` and itself, and only `cli/` imports the feature modules and connects them. `cli/test/unit/architecture_test.dart` checks every import.
@@ -228,7 +228,7 @@ Objects are connected through constructor arguments, with no service locator.
 
 `FLUTTER_RUN_STATE_DIR` overrides all three. It holds `sessions/<pid>.json` and `devices/<first 16 hex of the SHA-256 of the project root>.json`. The device file has `version`, `projectRoot`, `deviceId`, `name`, `platform` and `savedAt`, and is ignored if the version or project root does not match.
 
-Outside the state directory: `.zed/debug.json` and `.zed/tasks.json` in the project (written only by `init`), the downloaded binary in the extension's work directory, and the optional log file. `init` never writes the keymap.
+Outside the state directory: `.zed/debug.json` and `.zed/tasks.json` in the project (written only by `init`), the Zed `keymap.json` (appended to only by `keymap`), the downloaded binary in the extension's work directory, and the optional log file.
 
 ## Security
 

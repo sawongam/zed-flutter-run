@@ -3,7 +3,7 @@
 For maintainers. A release has an order that matters, because the extension carries the SHA-256 of each release binary and so must be finished after the binaries exist:
 
 ```
-version bump on master -> CI builds binaries, tags and publishes the GitHub release -> pin checksums -> pub.dev -> Zed registry
+version bump on `dev` -> merge `dev` into `prod` -> CI builds binaries, tags and publishes the GitHub release -> pin checksums -> pub.dev -> Zed registry
 ```
 
 Examples below use `0.1.0`.
@@ -13,15 +13,97 @@ Examples below use `0.1.0`.
 Do this before the first release.
 
 - **Environment** `pub.dev` (Settings > Environments), with yourself as required reviewer and deployment limited to `v*` tags. It gates `publish-pub.yml`. Without it that job runs without asking.
-- **Rules for `master`:** require pull requests and the CI checks, block force pushes. Add a tag rule for `v*` that blocks updates and deletion.
+- **Rules for `dev` and `prod`:** require pull requests and the CI checks, block force pushes. `dev` is the default branch where work lands. `prod` only receives merges from `dev`. Add a tag rule for `v*` that blocks updates and deletion.
 - **Security:** enable private vulnerability reporting and secret scanning with push protection.
 - **Actions:** allow GitHub Actions to create pull requests, so `release-please.yml` can open version PRs.
 - **Labels:** run the `Sync labels` workflow once.
 
+## Manual test in Zed
+
+The automated tests drive the real debug adapters but cannot press keys in Zed. Run this checklist before a release and after any change to the extension, the proxy's start or stop path, the tasks or the keymap. It takes about half an hour.
+
+When a step fails, these are the places to look:
+
+- The **Console** tab of Zed's debug panel, for `[flutter_run]` notices.
+- `zed: open log`, for extension errors.
+- `dev: open debug adapter logs`, for the protocol traffic Zed saw.
+- The proxy's own log: add `"logFile": "/tmp/flutter_run.log"` to the scenario.
+
+### Set up
+
+1. Build the tool onto your `PATH`:
+   ```sh
+   cd cli && dart pub get && dart compile exe bin/flutter_run.dart -o ~/.local/bin/flutter_run
+   flutter_run doctor
+   ```
+2. Start Zed from a terminal, so it sees the same `PATH`. Run `zed: install dev extension` and choose the `extension/` folder. The first build takes a few minutes.
+3. Make a scratch project:
+   ```sh
+   cp -r fixtures/sample_app /tmp/sample_app && cd /tmp/sample_app
+   flutter pub get && flutter_run init
+   zed .
+   ```
+4. Run `flutter_run keymap` to add the hot reload and hot restart keys.
+
+### Checklist
+
+**Launch and debug**
+
+- [ ] F4 lists **Flutter: Debug**, **Flutter: Run (no debug)**, **Flutter: Profile** and **Flutter: Attach**.
+- [ ] Zed's Dart extension still gives hover, completion and diagnostics in `lib/main.dart`.
+- [ ] The **Flutter: Select Device** task lists devices and saves the one you pick.
+- [ ] **Flutter: Debug** starts the app. The console shows `[flutter_run] Using device ...` and `[flutter_run] Reload on save is on for lib/ ...`.
+- [ ] A breakpoint on `lib/main.dart` line 7 is hit. Variables show `x`. Step over and continue work.
+
+**Hot reload and restart**
+
+- [ ] Change `kGreeting` and save. The console shows `[flutter_run] Hot reload on save: lib/main.dart` and the app updates.
+- [ ] Save again without changing anything. Nothing reloads.
+- [ ] Save a syntax error. The console shows a reload failure that suggests hot restart. Fix it and save; the reload succeeds.
+- [ ] Ctrl+F5 hot reloads. The task terminal hides itself on success.
+- [ ] Ctrl+Shift+F5 hot restarts: `main()` runs again.
+- [ ] Zed's own restart button works, and the app is not left running twice.
+
+**DevTools**
+
+- [ ] The **Flutter: Open DevTools** task opens the inspector in your browser, connected to the app.
+
+**Stop**
+
+- [ ] Shift+F5 closes the app within a few seconds.
+- [ ] `flutter_run status` reports no sessions.
+- [ ] Nothing is left running:
+  ```sh
+  pgrep -af 'flutter_tester|sample_app|flutter_run|development-service|frontend_server|debug_adapter' || echo none
+  ```
+- [ ] Closing the Zed window during a session also leaves nothing running.
+
+**Attach**
+
+- [ ] Run `flutter run -d linux` in a terminal and copy the VM service address. Put it in the **Flutter: Attach** scenario as `"vmServiceUri"`, with `"toolArgs": ["-d", "linux"]`. Attaching works, breakpoints hit and hot reload works.
+- [ ] Stopping in Zed detaches. The app and `flutter run` keep running.
+
+**Errors**
+
+- [ ] With no saved device (`flutter_run select-device --clear`) and several devices available, launching fails with a hint to run **Flutter: Select Device**.
+- [ ] With `flutter_run` off `PATH` and `dap.FlutterRun.binary` set in Zed settings, debugging works and the console warns once that the tasks cannot run.
+- [ ] With `flutter_run` nowhere to be found, the session fails with a message that says how to install it.
+- [ ] `"flutterSdkPath": "/nonexistent"` fails with a message that lists where the SDK was looked for.
+
+**Dart program**
+
+- [ ] In a copy of `fixtures/dart_console`, `flutter_run init` writes a **Dart: Debug bin/main.dart** scenario. A breakpoint on line 11 is hit and the program runs to the end.
+
+### Other platforms
+
+**macOS.** Also start Zed from the Dock: it may not see your shell's `PATH`, so check the `dap.FlutterRun.binary` setting works. The F keys need `fn` unless you changed the keyboard setting, and hot restart is Shift+Cmd+F5.
+
+**Windows.** Use a compiled `flutter_run.exe`, not the `.bat` launcher from pub. After stopping, check for leftovers with `tasklist | findstr /i "dart flutter"`.
+
 ## 1. Before you release
 
-- [ ] CI is green on `master`.
-- [ ] You ran [TESTING_IN_ZED.md](TESTING_IN_ZED.md) on this commit.
+- [ ] CI is green on `dev`.
+- [ ] You ran the [manual test in Zed](#manual-test-in-zed) on this commit.
 - [ ] The version is the same in all five places. `release-please` opens a pull request that changes them together; to do it by hand, edit:
   1. `cli/pubspec.yaml`
   2. `cli/lib/src/common/version.dart`
@@ -35,7 +117,7 @@ Do this before the first release.
 
 ## 2. Push and build
 
-Merge the version bump to `master`. There is no tag to push. `release.yml` runs when a push changes `cli/pubspec.yaml` to a version that has no GitHub release yet, and does nothing otherwise. It creates the tag `v0.1.0` on that commit itself. It compiles `flutter_run` on five runners and produces:
+Merge `dev` into `prod` with the version bumped. There is no tag to push. `release.yml` runs when a push to `prod` changes `cli/pubspec.yaml` to a version that has no GitHub release yet, and does nothing otherwise. It creates the tag `v0.1.0` on that commit itself. It compiles `flutter_run` on five runners and produces:
 
 | Asset | Runner |
 |---|---|
@@ -104,7 +186,7 @@ Check first:
 
 - [ ] `extension/extension.toml` has the version you are registering and a real name in `authors`.
 - [ ] `extension/LICENSE` is the unmodified BSD 3-Clause text. A licence only at the repository root does not count.
-- [ ] The commit you submit is on `master`, contains the pinned checksums, and is the one you tested in Zed.
+- [ ] The commit you submit is on `prod`, contains the pinned checksums, and is the one you tested in Zed.
 
 Then, in a fork of `zed-industries/extensions` under your personal account:
 

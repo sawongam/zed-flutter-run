@@ -1,4 +1,4 @@
-# Release workflow. Runs when a push to master changes cli/pubspec.yaml to a
+# Release workflow. Runs when a push to prod changes cli/pubspec.yaml to a
 # version that has no release yet, or by hand (workflow_dispatch). It builds the
 # binaries, writes SHA256SUMS, attests them, then creates the git tag vX.Y.Z and
 # the GitHub release. If the release already exists, every job after `version` is
@@ -11,7 +11,7 @@ name: Release build
 
 on:
   push:
-    branches: [master]
+    branches: [prod]
     paths: ["cli/pubspec.yaml"]
   workflow_dispatch:
 

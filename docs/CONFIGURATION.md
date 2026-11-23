@@ -116,7 +116,8 @@ Global options: `-h`/`--help`, `-v`/`--verbose`, `-V`/`--version`, `--project=<d
 
 | Command | What it does | Flags |
 |---|---|---|
-| `init` | Write `.zed/debug.json` and `.zed/tasks.json`, print the keymap snippet | `--dry-run`, `--force` (replaces files, keeps a `.bak`) |
+| `init` | Write `.zed/debug.json` and `.zed/tasks.json` for the project | `--dry-run`, `--force` (replaces files, keeps a `.bak`) |
+| `keymap` | Add the hot reload, hot restart and DevTools keys to your Zed keymap (once per computer) | `--reload-key=<key>`, `--restart-key=<key>`, `--devtools-key=<key>`, `--keep-zed-restart-key`, `--file=<path>`, `--dry-run` |
 | `reload` | Hot reload every running Flutter app of the project | `--timeout=<seconds>` (default 120) |
 | `restart` | Hot restart every running Flutter app of the project | `--timeout=<seconds>` |
 | `status` | List running debug sessions | `--json` |
@@ -128,7 +129,7 @@ Global options: `-h`/`--help`, `-v`/`--verbose`, `-V`/`--version`, `--project=<d
 | `version` | Print the version | |
 | `dap` | Debug adapter proxy. The extension starts it. Do not run it by hand | `--cwd`, `--kind` (`flutter`, `dart`), `--request` (`launch`, `attach`), `--use-fvm`, `--log-file`, `--client-version` |
 
-`init` never overwrites silently. It merges into existing files when it can. When it cannot (for example a file it cannot parse) it prints the content and exits with code 9.
+`init` never overwrites silently. It merges into existing files when it can, including files with comments (it appends as text, so the comments stay). When it cannot (for example a file that is not a JSON array) it prints the content and exits with code 9.
 
 ## Exit codes
 
@@ -143,7 +144,7 @@ Global options: `-h`/`--help`, `-v`/`--verbose`, `-V`/`--version`, `--project=<d
 | 6 | Flutter or Dart SDK not found |
 | 7 | No devices, or an unknown device id |
 | 8 | No `pubspec.yaml` at or above the directory |
-| 9 | `init` could not edit a file safely and printed it for you to paste |
+| 9 | `init` or `keymap` could not edit a file safely and printed it for you to paste |
 | 10 | A flutter, dart or browser command failed |
 | 130 | Interrupted (Ctrl+C) |
 
@@ -161,7 +162,7 @@ In your Zed `settings.json`, to point Zed at a specific binary:
 
 The extension looks for `flutter_run` in this order: `dap.FlutterRun.binary`, `PATH`, then (release builds only) a checksum-pinned download from GitHub releases. A dev build never downloads.
 
-## Tasks and keymap written by `init`
+## Tasks and scenarios written by `init`
 
 For a Flutter project, `init` adds these tasks to `.zed/tasks.json`. Each runs `flutter_run` in `$ZED_WORKTREE_ROOT`.
 
@@ -179,14 +180,45 @@ For a Flutter project, `init` adds these tasks to `.zed/tasks.json`. Each runs `
 
 For a Dart project it adds only **Flutter: Doctor**.
 
-Scenarios written to `.zed/debug.json`: for Flutter, **Flutter: Debug**, **Flutter: Run (no debug)**, **Flutter: Profile** and **Flutter: Attach**. For Dart, one **Dart: Debug <entry>** scenario.
+Scenarios written to `.zed/debug.json` for Flutter depend on how the app starts. `init` checks these in order:
 
-The keymap snippet (printed, never written) uses the context `Workspace && debugger_session`:
+1. **`.vscode/launch.json`.** Each `"type": "dart"` launch entry becomes **Flutter: <name>**, with its `program`, `env` and `flutterMode`. `args` and `toolArgs` go to `toolArgs`, without `--target`/`-t`, because `program` sets the target. Entries with another `cwd` or with VS Code variables other than `${workspaceFolder}` are skipped. Comments in the file are fine.
+2. **`lib/main.dart`.** **Flutter: Debug**, **Flutter: Run (no debug)** and **Flutter: Profile**.
+3. **`lib/main_<flavor>.dart` files.** **Flutter: Debug <flavor>** and **Flutter: Run <flavor> (no debug)** for each. `--flavor <flavor>` is added only when Android (`productFlavors` in `android/app/build.gradle` or `build.gradle.kts`) or iOS/macOS (a `<flavor>.xcscheme`) defines that flavor, because `--flavor` for a flavor that does not exist fails the build.
 
-| Key | Task |
+If none of these is found, `init` writes the `lib/main.dart` set and warns you to set `program`. **Flutter: Attach** is always added.
+
+Local path packages inside the project (`path:` dependencies and pub `workspace:` members, such as `packages/app_ui`) are added to `reloadOnSaveGlobs` as `<folder>/lib/**.dart`, so saving a file there also hot reloads.
+
+For Dart, one **Dart: Debug <entry>** scenario.
+
+## Keys
+
+Zed extensions cannot add key bindings, so `flutter_run keymap` writes them into your Zed keymap: `~/.config/zed/keymap.json` (Linux and macOS; `$XDG_CONFIG_HOME/zed` when set, or the Flatpak folder `~/.var/app/dev.zed.Zed/config/zed` when only that exists) or `%APPDATA%\Zed\keymap.json` (Windows). Run it once per computer. It appends one block and keeps your comments. If the keymap already starts one of these tasks, it changes nothing and lists the keys it found.
+
+| Default key | Task |
 |---|---|
 | `ctrl-f5` | Flutter: Hot Reload |
 | `ctrl-shift-f5` (macOS: `shift-cmd-f5`) | Flutter: Hot Restart |
 | `ctrl-alt-shift-d` | Flutter: Open DevTools |
 
-Zed binds its own restart to `ctrl-shift-f5`. `init` prints a second snippet without the restart key if you want to keep Zed's. Because the context needs a running session, these keys do nothing otherwise. Zed has no key for "run without debugging"; use the **Flutter: Run (no debug)** scenario.
+Pick other keys with `--reload-key`, `--restart-key` and `--devtools-key`. Keys can be written as `ctrl-shift-s` or `Ctrl+Shift+S`. For example, to hot reload on Ctrl+S and hot restart on Ctrl+Shift+S:
+
+```sh
+flutter_run keymap --reload-key ctrl-s --restart-key ctrl-shift-s
+```
+
+The block uses the context `Workspace && debugger_session`, so the keys only change while a debug session runs and keep their usual meaning otherwise. The hot reload and hot restart tasks save all files first, so binding Ctrl+S to hot reload still saves. Zed binds its own "restart debug session" to `ctrl-shift-f5`; `--keep-zed-restart-key` leaves out the hot restart key so that Zed's stays.
+
+`keymap` reads `base_keymap` and `vim_mode` from your Zed `settings.json` and warns about keys that are known to clash:
+
+| Key | Clash |
+|---|---|
+| `ctrl-f5` on macOS with the Sublime Text keymap | Sort lines, bound in the editor. It wins while the cursor is in a file, so pick another key. |
+| `ctrl-f5` on macOS | Can be the system shortcut that moves focus to the toolbar. |
+| `ctrl-f5` on Linux | Some desktops, such as Xfce, use it to switch workspace. |
+| `ctrl-f5` with the JetBrains keymap | Rerun last task. Our binding replaces it during a session. |
+| `ctrl-s` with the Emacs keymap or Vim mode | Search, or a Vim insert-mode key. Both are bound in the editor and win. |
+| `ctrl-shift-s` / `cmd-shift-s` | Save As. Not available during a debug session. |
+
+Zed has no key for "run without debugging"; use a **(no debug)** scenario.

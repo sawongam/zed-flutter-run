@@ -62,6 +62,18 @@ Zed has no on-save hook for extensions, so the proxy watches files itself. It wa
 
 In the default `changed` mode a save only triggers a reload when the file's content differs from what was last loaded. This matters because some editors and slow file systems report one save as two events. Overlapping reloads are merged, and a save during a hot restart is applied after the restart.
 
+## Keys are written by a command, not printed
+
+Zed extensions cannot add key bindings, and a printed snippet to paste was the step people missed. So `flutter_run keymap` appends one block to the user's Zed keymap. It is a separate command, not part of `init`, because the keymap belongs to the user rather than the project and is needed once per computer. It only appends (as text, so comments stay), never edits or removes bindings, and stops if our tasks are already bound. The block uses the context `Workspace && debugger_session`, so that keys such as Ctrl+S keep their usual meaning outside a debug session.
+
+## `init` copies how the app is already started
+
+A scenario that points at a missing `lib/main.dart` fails on the first F4, which is a poor first experience for apps with flavors. So `init` reads `.vscode/launch.json` first, since it records the targets, flavors and defines the team already uses, and otherwise looks for `lib/main_<flavor>.dart`. It adds `--flavor` only when Android or iOS defines that flavor, because a wrong `--flavor` breaks the build while a missing one only builds the default.
+
+## A hot action waits rather than fails
+
+With reload on save, a reload is often running when the user presses the hot restart key. Answering `busy` made the key look broken. A request now waits for the running action and then runs, bounded by the action timeout. A request for the action that is already running joins it, so pressing a key twice does not restart twice.
+
 ## The saved device lives outside the project
 
 The device chosen with `select-device` is stored in the per-user state directory, keyed by project path. It survives `flutter clean` and never shows up in version control. A `deviceId` in `debug.json` takes priority.

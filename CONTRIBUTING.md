@@ -13,7 +13,7 @@ By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Report se
 | `fixtures/` | Sample projects the integration tests copy and run |
 | `docs/` | User and developer documentation |
 
-Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the parts fit together and [docs/DESIGN.md](docs/DESIGN.md) for why. [docs/EXTENDING.md](docs/EXTENDING.md) has step-by-step recipes for adding a command, a `debug.json` key or a locator pattern.
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the parts fit together and [docs/DESIGN.md](docs/DESIGN.md) for why.
 
 ## Set up
 
@@ -60,7 +60,7 @@ To try a change in Zed, compile the CLI onto your `PATH` and install the extensi
 cd cli && dart compile exe bin/flutter_run.dart -o ~/.local/bin/flutter_run
 ```
 
-Then run `zed: install dev extension` in Zed and choose the `extension/` folder. [docs/TESTING_IN_ZED.md](docs/TESTING_IN_ZED.md) is a checklist of what to try.
+Then run `zed: install dev extension` in Zed and choose the `extension/` folder. [docs/RELEASE.md](docs/RELEASE.md#manual-test-in-zed) has a checklist of what to try.
 
 ## Code rules
 

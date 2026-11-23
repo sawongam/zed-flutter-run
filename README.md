@@ -61,7 +61,21 @@ cd my_flutter_app
 flutter_run init
 ```
 
-`init` writes `.zed/debug.json` and `.zed/tasks.json` and prints a keymap snippet for hot reload and hot restart. It merges with files you already have and never overwrites them without telling you. Use `--dry-run` to see what it would write.
+`init` writes `.zed/debug.json` and `.zed/tasks.json`. It copies your entry points and flavors from `.vscode/launch.json`, or finds `lib/main_<flavor>.dart` files, and watches local packages such as `packages/app_ui` for reload on save. It merges with files you already have and never overwrites them without telling you. Use `--dry-run` to see what it would write. Run it in each project, and commit the `.zed` folder so teammates get it too.
+
+**4. Add the keys (once per computer)**
+
+```sh
+flutter_run keymap
+```
+
+Zed extensions cannot add key bindings, so this command adds them to your Zed keymap for you. To use your own keys, for example Ctrl+S to hot reload and Ctrl+Shift+S to hot restart:
+
+```sh
+flutter_run keymap --reload-key ctrl-s --restart-key ctrl-shift-s
+```
+
+It warns you if a key clashes with your Zed keymap (JetBrains, Sublime Text, Emacs, Vim) or your OS. See [Keys](docs/CONFIGURATION.md#keys).
 
 ## Use
 
@@ -76,7 +90,9 @@ Open the project in Zed, press **F4** and choose **Flutter: Debug**. Set breakpo
 | Ctrl+Shift+F5 (macOS: Shift+Cmd+F5) | Hot restart |
 | Ctrl+Alt+Shift+D | Open DevTools |
 
-The first three are Zed's defaults. The last three come from the keymap snippet that `init` prints; paste it into your keymap (`zed: open keymap file`). They work while a debug session is running.
+The first three are Zed's defaults. The last three come from `flutter_run keymap` and work while a debug session runs. If a key does nothing, see [Troubleshooting](docs/TROUBLESHOOTING.md#running-and-debugging).
+
+No keys? Every action is also a task: open `task: spawn` and type "Flutter".
 
 Other things you can do:
 
@@ -85,13 +101,19 @@ Other things you can do:
 - **Attach to an app you started yourself:** use `"request": "attach"` with `"vmServiceUri"`. See [attach](docs/CONFIGURATION.md#attach).
 - **Run without the debugger:** choose **Flutter: Run (no debug)** from the F4 list.
 
+## Compatibility
+
+Zed 0.205 or newer (the first version with debugger extensions), the latest stable Flutter, and Linux, macOS or Windows. CI runs the unit tests and the Dart debug adapter on all three systems, and the Flutter debug adapter on Linux with the headless `flutter-tester` device. Real devices (desktop, Android, iOS, web) are not covered by CI, so a short [issue](https://github.com/sawongam/zed-flutter-run/issues) with your versions and the output of `flutter_run doctor` helps a lot.
+
+## Privacy
+
+No telemetry, and nothing phones home. The only network use by this project is the one-time download of the `flutter_run` binary from this repository's GitHub releases, which is checked against a pinned SHA-256 and happens only when no `flutter_run` is on your `PATH`. The control channel is loopback only, with a per-session token. Log files exist only when you turn them on, and can contain your app's output, so check them before sharing.
+
 ## Documentation
 
 - [Configuration](docs/CONFIGURATION.md): every `debug.json` key, command, flag, environment variable and exit code
-- [Troubleshooting](docs/TROUBLESHOOTING.md): start with `flutter_run doctor`
-- [Compatibility](docs/COMPATIBILITY.md): supported Zed, Flutter and OS versions, and known limitations
+- [Troubleshooting](docs/TROUBLESHOOTING.md): start with `flutter_run doctor`. Also lists known limitations
 - [Architecture](docs/ARCHITECTURE.md) and [design notes](docs/DESIGN.md): how it works and why
-- [Privacy](docs/PRIVACY.md): no telemetry
 
 ## How it works
 

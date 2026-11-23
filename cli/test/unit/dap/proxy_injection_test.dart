@@ -113,11 +113,15 @@ void main() {
         HotResult? manual;
         h.proxy.hotActions.reload().then((r) => manual = r);
         fa.flushMicrotasks();
-        expect(manual!.error, HotError.busy);
+        // The reload waits for the client restart instead of failing.
+        expect(manual, isNull);
         h.adapter.respond(h.adapter.lastRequest('restart'));
         fa.flushMicrotasks();
-        expect(h.proxy.hotActions.busy, isFalse);
         expect(h.client.sentWhere('response', 'restart'), hasLength(1));
+        h.adapter.respond(h.adapter.lastRequest('hotReload'));
+        fa.flushMicrotasks();
+        expect(manual!.ok, isTrue);
+        expect(h.proxy.hotActions.busy, isFalse);
       });
     });
   });

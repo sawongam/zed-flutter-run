@@ -8,7 +8,7 @@ name: Release PR
 
 on:
   push:
-    branches: [master]
+    branches: [dev]
   workflow_dispatch:
 
 permissions:

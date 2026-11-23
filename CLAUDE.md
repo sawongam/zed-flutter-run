@@ -1,17 +1,17 @@
 # zed-flutter-run
 
-VS Code-style Flutter run and debug for the Zed editor. A thin Rust Zed extension (`extension/`) plus a Dart command-line tool and debug adapter proxy, `flutter_run` (`cli/`).
+Flutter run and debug for the Zed editor: a thin Rust Zed extension (`extension/`) and a Dart command-line tool and debug adapter proxy, `flutter_run` (`cli/`).
 
-## Before you change anything
+## Read first
 
 - `docs/ARCHITECTURE.md`: how the parts fit together.
-- `docs/DESIGN.md`: why it is built this way. Do not undo one of these choices without saying so.
-- `CONTRIBUTING.md`: build and test commands, and the code rules.
+- `docs/DESIGN.md`: why it is built this way. Do not undo a recorded choice without saying so.
+- `CONTRIBUTING.md`: build and test commands and the code rules.
 
-## Working rules
+## Rules
 
-- Launch subagents with `model: "sonnet"` and `effort: "medium"`, unless the user names something else.
-- Keep the docs true. When behaviour changes, update `docs/CONFIGURATION.md`, `docs/ARCHITECTURE.md` and `CHANGELOG.md` in the same change. Record a new design choice in `docs/DESIGN.md`.
-- Do not add process notes, conversation logs, review reports or planning documents to the repository.
-- Write docs and comments in plain, direct English. Comments explain why, not what.
-- Format, analysis and the unit tests must pass before a change is done: see `CONTRIBUTING.md`.
+- Keep the docs true. When behaviour changes, update `docs/CONFIGURATION.md`, `docs/ARCHITECTURE.md` and `CHANGELOG.md` in the same change, and record a new design choice in `docs/DESIGN.md`.
+- Format, analysis and the unit tests must pass before a change is done (see `CONTRIBUTING.md`).
+- Commit messages use Conventional Commits: `type: short imperative summary`.
+- Do not add process notes, review reports or planning documents to the repository.
+- Docs and comments are plain, direct English. Comments explain why, not what.

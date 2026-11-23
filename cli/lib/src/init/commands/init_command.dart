@@ -15,7 +15,7 @@ import '../project_detect.dart';
 import '../templates.dart';
 
 /// `flutter_run init`: writes `.zed/debug.json` and `.zed/tasks.json` and
-/// prints the keymap snippet, the key table and the PATH check.
+/// prints the key table, how to add the keys and the PATH check.
 class InitCommand extends Command<int> {
   InitCommand({
     required this._env,
@@ -63,6 +63,9 @@ class InitCommand extends Command<int> {
 
     _console.out(_projectLine(project));
     if (project.usesFvm) _console.out(_fvmLine);
+    for (final line in _detectionLines(project)) {
+      _console.out(line);
+    }
 
     var manualSteps = 0;
     final files = <(String, List<Json>)>[
@@ -84,20 +87,9 @@ class InitCommand extends Command<int> {
 
     _console
       ..out('')
-      ..out(keyTable())
+      ..out(keyTable(KeyChoice.defaults(_env.os)))
       ..out('')
-      ..out(_keymapStepsLine);
-    _console
-      ..out(keymapSnippet(_env.os))
-      ..out('')
-      ..out(_optionalSnippetLine)
-      ..out(keymapSnippet(_env.os, keepZedRestartKey: true));
-    if (_env.os == HostOs.macos) {
-      _console
-        ..out('')
-        ..out(macosKeyNote());
-    }
-    _console
+      ..out(_keymapLine)
       ..out('')
       ..out(_consoleTabLine);
 
@@ -180,7 +172,6 @@ class InitCommand extends Command<int> {
           _console
             ..out(_couldNotEdit(shownName, reason))
             ..out(snippet);
-          if (reason.contains('comments')) _console.out(_templateNote);
           return true;
         }
         final fresh = encodeJsonFile(entries);
@@ -214,16 +205,12 @@ class InitCommand extends Command<int> {
   static const String _fvmLine =
       'Found an fvm setup. flutter_run uses the Flutter version that fvm selects.';
   static const String _dryRunLine = 'Dry run: nothing was written.';
-  static const String _keymapStepsLine =
-      'Open the command palette, run "zed: open keymap file", and paste the snippet.';
-  static const String _optionalSnippetLine =
-      'To keep Zed\'s default restart key, paste this snippet instead (it leaves out the hot restart key):';
+  static const String _keymapLine =
+      'To add the hot reload and hot restart keys to Zed, run "flutter_run keymap" once. It works for every project.';
   static const String _consoleTabLine =
       'Output and reload results appear in the Console tab of the Debug panel.';
   static const String _notOnPathLine =
       'Warning: Zed tasks cannot start flutter_run until it is on your PATH.';
-  static const String _templateNote =
-      'If the comments are only the template text that Zed puts in new files, delete them and run this again.';
   static const String _commitNote =
       'The .zed folder is usually committed. Teammates without flutter_run on their PATH can still debug, but the tasks fail for them; "Flutter: Doctor" explains why.';
 
@@ -231,6 +218,17 @@ class InitCommand extends Command<int> {
     ProjectKind.flutter => 'Flutter app "${p.name}" in ${p.root}',
     ProjectKind.dart => 'Dart package "${p.name}" in ${p.root}',
   };
+
+  static List<String> _detectionLines(ProjectInfo p) => [
+    for (final t in p.launchTargets)
+      t.fromLaunchJson
+          ? 'Found "${t.name}" in .vscode/launch.json (${t.program}).'
+          : 'Found entry point ${t.program}'
+                '${t.toolArgs.isEmpty ? '' : ' with ${t.toolArgs.join(' ')}'}.',
+    if (p.packageGlobs.isNotEmpty)
+      'Reload on save also watches the local packages: ${p.packageGlobs.join(', ')}.',
+    if (p.missingMain) 'Warning: lib/main.dart does not exist. Set "program" in .zed/debug.json to your entry point.',
+  ];
 
   static String _entries(int n) => n == 1 ? '1 entry' : '$n entries';
 
