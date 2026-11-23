@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use zed_extension_api::{Architecture as Arch, Os};
 
-pub const PROXY_VERSION: &str = "0.1.0"; // x-release-please-version
+pub const PROXY_VERSION: &str = "0.1.0";
 const REPO: &str = "sawongam/zed-flutter-run";
 /// Flipped by the release steps once `dart pub global activate flutter_run` works.
 const PUBLISHED_ON_PUB: bool = false;

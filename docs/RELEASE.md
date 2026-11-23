@@ -15,7 +15,6 @@ Do this before the first release.
 - **Environment** `pub.dev` (Settings > Environments), with yourself as required reviewer and deployment limited to `v*` tags. It gates `publish-pub.yml`. Without it that job runs without asking.
 - **Rules for `dev` and `prod`:** require pull requests and the CI checks, block force pushes. `dev` is the default branch where work lands. `prod` only receives merges from `dev`. Add a tag rule for `v*` that blocks updates and deletion.
 - **Security:** enable private vulnerability reporting and secret scanning with push protection.
-- **Actions:** allow GitHub Actions to create pull requests, so `release-please.yml` can open version PRs.
 - **Labels:** run the `Sync labels` workflow once.
 
 ## Manual test in Zed
@@ -102,9 +101,9 @@ When a step fails, these are the places to look:
 
 ## 1. Before you release
 
-- [ ] CI is green on `dev`.
-- [ ] You ran the [manual test in Zed](#manual-test-in-zed) on this commit.
-- [ ] The version is the same in all five places. `release-please` opens a pull request that changes them together; to do it by hand, edit:
+- [x] CI is green on `dev`.
+- [x] You ran the [manual test in Zed](#manual-test-in-zed) on this commit.
+- [x] The version is the same in all five places. Edit:
   1. `cli/pubspec.yaml`
   2. `cli/lib/src/common/version.dart`
   3. `extension/Cargo.toml` (then run `cargo check` in `extension/` to update `Cargo.lock`)
@@ -112,8 +111,8 @@ When a step fails, these are the places to look:
   5. `extension/src/install.rs` (`PROXY_VERSION`)
 
   Check with `sh .github/scripts/check-versions.sh`.
-- [ ] `CHANGELOG.md` has a `## [0.1.0] - YYYY-MM-DD` section with the date filled in. The release workflow takes the release notes from it and fails if it is missing. Copy the section to `cli/CHANGELOG.md` for pub.dev.
-- [ ] The README install section is true for this release.
+- [x] `CHANGELOG.md` has a `## [0.1.0] - YYYY-MM-DD` section with the date filled in. The release workflow takes the release notes from it and fails if it is missing. Copy the section to `cli/CHANGELOG.md` for pub.dev.
+- [x] The README install section is true for this release.
 
 ## 2. Push and build
 
@@ -221,4 +220,3 @@ To update the registry later, move the submodule to the new commit and change `v
 - [ ] `dart pub global activate flutter_run` on a clean machine gives a working `flutter_run doctor`.
 - [ ] Once the registry lists the extension: install it from `zed: extensions` and start a debug session with and without `flutter_run` on `PATH`.
 - [ ] Update the README install section with the real commands.
-- [ ] Remove `"release-as": "0.1.0"` from `release-please-config.json` after the first release, or every later version PR will propose 0.1.0 again.
