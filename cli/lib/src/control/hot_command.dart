@@ -174,7 +174,7 @@ abstract class HotActionCommand extends Command<int> {
         final coalesced = response.result?['coalesced'] == true;
         return _Outcome(
           '$prefix ${_mark('ok')} in $seconds s'
-          '${coalesced ? ' (joined a reload that was already running)' : ''}',
+          '${coalesced ? ' (joined one that was already running)' : ''}',
           ok: true,
         );
       }

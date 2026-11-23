@@ -205,7 +205,10 @@ class ProxySessionControl implements SessionControl {
     _checkAlive();
     final result = await _hot.restart();
     _throwIfFailed(result);
-    return <String, Object?>{'durationMs': result.duration.inMilliseconds};
+    return <String, Object?>{
+      'durationMs': result.duration.inMilliseconds,
+      'coalesced': result.coalesced,
+    };
   }
 
   void _checkAlive() {

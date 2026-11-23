@@ -106,9 +106,12 @@ class HotActions {
     if (done != null && !done.isCompleted) done.complete();
   }
 
+  // A key pressed while another action runs must not fail: with reload on
+  // save, a reload is often already running when the user asks for a
+  // restart. So a request waits for the running action (at most [timeout])
+  // and then runs, except that it joins a running action of the same kind.
   Future<HotResult> _request(_Action action, String reason) async {
     final name = action == _Action.reload ? 'reload' : 'restart';
-    final waitsForRestart = action == _Action.reload && reason == 'save';
     while (true) {
       if (!_injector.appStarted) {
         _injector.notice(
@@ -118,33 +121,25 @@ class HotActions {
         return const HotResult(ok: false, error: HotError.notStarted);
       }
       if (_clientRestart) {
-        if (!waitsForRestart) return _busy();
         final done = _clientRestartDone;
-        if (done != null) {
-          await withTimeout<void>(
-            _clock,
-            done.future,
-            timeout,
-            onTimeout: () {},
-          );
-        }
+        if (done != null) await _waitAtMostTimeout(done.future);
         if (_clientRestart) return _busy();
         continue;
       }
       final flight = _current;
       if (flight == null) return _run(action, reason);
       if (flight.timedOut) return _busy();
-      if (flight.action == _Action.reload && action == _Action.reload) {
+      if (flight.action == action) {
         final shared = await flight.result.future;
         return shared._asCoalesced();
       }
-      if (flight.action == _Action.restart && waitsForRestart) {
-        await flight.result.future;
-        continue;
-      }
-      return _busy();
+      await _waitAtMostTimeout(flight.result.future);
+      if (identical(_current, flight)) return _busy();
     }
   }
+
+  Future<void> _waitAtMostTimeout(Future<Object?> future) =>
+      withTimeout<void>(_clock, future.then((_) {}), timeout, onTimeout: () {});
 
   HotResult _busy() =>
       const HotResult(ok: false, error: HotError.busy, message: busyMessage);

@@ -22,24 +22,36 @@ List<Json> debugScenarios(ProjectInfo p) {
       },
     ];
   }
-  Json launch(String label, Json extra) => <String, Object?>{
+  final watch = <String, Object?>{
+    'reloadOnSave': 'changed',
+    if (p.packageGlobs.isNotEmpty) 'reloadOnSaveGlobs': p.packageGlobs,
+  };
+  Json launch(String label, String program, Json extra) => <String, Object?>{
     'label': label,
     'adapter': _adapter,
     'request': 'launch',
     'type': 'flutter',
-    'program': 'lib/main.dart',
+    'program': program,
     'cwd': _root,
     ...extra,
   };
+  final launches = p.launchTargets.isEmpty
+      ? <Json>[
+          launch('Flutter: Debug', 'lib/main.dart', watch),
+          launch('Flutter: Run (no debug)', 'lib/main.dart', {
+            'noDebug': true,
+            ...watch,
+          }),
+          launch('Flutter: Profile', 'lib/main.dart', {
+            'toolArgs': <String>['--profile'],
+          }),
+        ]
+      : <Json>[
+          for (final t in p.launchTargets)
+            ..._targetScenarios(t, launch, watch),
+        ];
   return <Json>[
-    launch('Flutter: Debug', {'reloadOnSave': 'changed'}),
-    launch('Flutter: Run (no debug)', {
-      'noDebug': true,
-      'reloadOnSave': 'changed',
-    }),
-    launch('Flutter: Profile', {
-      'toolArgs': <String>['--profile'],
-    }),
+    ...launches,
     <String, Object?>{
       'label': 'Flutter: Attach',
       'adapter': _adapter,
@@ -49,8 +61,35 @@ List<Json> debugScenarios(ProjectInfo p) {
       // Replace with the VM service URI that `flutter run` prints. Attach
       // without one waits forever (see docs/CONFIGURATION.md).
       'vmServiceUri': attachUriPlaceholder,
-      'reloadOnSave': 'changed',
+      ...watch,
     },
+  ];
+}
+
+// A launch.json entry becomes one scenario as it is. A main_<flavor>.dart
+// file gets a debug and a no-debug scenario, like the plain set.
+List<Json> _targetScenarios(
+  LaunchTarget t,
+  Json Function(String label, String program, Json extra) launch,
+  Json watch,
+) {
+  Json extra({bool noDebug = false}) => <String, Object?>{
+    if (t.toolArgs.isNotEmpty) 'toolArgs': t.toolArgs,
+    if (t.flutterMode != null) 'flutterMode': t.flutterMode,
+    if (t.env.isNotEmpty) 'env': t.env,
+    if (noDebug) 'noDebug': true,
+    if (t.flutterMode == null || t.flutterMode == 'debug') ...watch,
+  };
+  if (t.fromLaunchJson) {
+    return [launch('Flutter: ${t.name}', t.program, extra(noDebug: t.noDebug))];
+  }
+  return [
+    launch('Flutter: Debug ${t.name}', t.program, extra()),
+    launch(
+      'Flutter: Run ${t.name} (no debug)',
+      t.program,
+      extra(noDebug: true),
+    ),
   ];
 }
 

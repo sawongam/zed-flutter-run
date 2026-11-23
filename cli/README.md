@@ -31,11 +31,9 @@ Commands: `init`, `reload`, `restart`, `status`, `devices`, `select-device`, `em
 
 ## Documentation
 
-- [Configuration reference](https://github.com/sawongam/zed-flutter-run/blob/master/docs/CONFIGURATION.md)
-- [Compatibility](https://github.com/sawongam/zed-flutter-run/blob/master/docs/COMPATIBILITY.md)
-- [Troubleshooting](https://github.com/sawongam/zed-flutter-run/blob/master/docs/TROUBLESHOOTING.md)
-- [Privacy](https://github.com/sawongam/zed-flutter-run/blob/master/docs/PRIVACY.md): no telemetry
-- [Security policy](https://github.com/sawongam/zed-flutter-run/blob/master/SECURITY.md)
+- [Configuration reference](https://github.com/sawongam/zed-flutter-run/blob/prod/docs/CONFIGURATION.md)
+- [Troubleshooting](https://github.com/sawongam/zed-flutter-run/blob/prod/docs/TROUBLESHOOTING.md)
+- [Security policy](https://github.com/sawongam/zed-flutter-run/blob/prod/SECURITY.md)
 
 Not affiliated with, endorsed by or sponsored by Google, Flutter, Dart or Zed Industries.
 

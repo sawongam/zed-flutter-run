@@ -373,7 +373,10 @@ void main() {
       inSession((h) {
         h.launch();
         h.appStarted();
-        h.signals.raise(ProcessSignal.sigterm);
+        // Windows only watches SIGINT.
+        h.signals.raise(
+          Platform.isWindows ? ProcessSignal.sigint : ProcessSignal.sigterm,
+        );
         h.fa.flushMicrotasks();
         // Nothing is torn down until the proxy has started its shutdown...
         h.finish();

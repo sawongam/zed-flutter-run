@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/sawongam/zed-flutter-run/discussions
     about: Ask questions and share ideas here instead of opening an issue.
   - name: Report a security vulnerability
-    url: https://github.com/sawongam/zed-flutter-run/blob/master/SECURITY.md
+    url: https://github.com/sawongam/zed-flutter-run/blob/dev/SECURITY.md
     about: Please do not open a public issue; follow SECURITY.md (private vulnerability reporting).

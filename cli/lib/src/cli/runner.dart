@@ -65,7 +65,7 @@ Exit codes:
   6    Flutter or Dart SDK not found.
   7    No devices, or an unknown device id.
   8    No pubspec.yaml at or above the directory.
-  9    "init" could not edit a file safely and printed it for you to paste.
+  9    "init" or "keymap" could not edit a file safely and printed it for you to paste.
   10   A flutter, dart or browser command failed.
   130  Interrupted (Ctrl+C).''';
 

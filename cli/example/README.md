@@ -41,4 +41,4 @@ The generated `.zed/debug.json` entry looks like this:
 }
 ```
 
-All keys and commands are in the [configuration reference](https://github.com/sawongam/zed-flutter-run/blob/master/docs/CONFIGURATION.md).
+All keys and commands are in the [configuration reference](https://github.com/sawongam/zed-flutter-run/blob/prod/docs/CONFIGURATION.md).

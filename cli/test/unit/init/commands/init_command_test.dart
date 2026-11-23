@@ -161,27 +161,14 @@ void main() {
     expect(File(zed('tasks.json')).existsSync(), isFalse);
   });
 
-  test('JSONC file is untouched, snippet printed, exit 9', () async {
+  test('a JSONC file keeps its comments and gets the entries', () async {
     writeProject();
     Directory(p.join(tmp.path, '.zed')).createSync();
-    const jsonc = '// my scenarios\n[]\n';
-    File(zed('debug.json')).writeAsStringSync(jsonc);
-    expect(await run([]), ExitCodes.manualActionRequired);
-    expect(read('debug.json'), jsonc);
-    expect(File(zed('tasks.json')).existsSync(), isTrue);
-    expect(
-      out(),
-      contains(
-        'Could not safely edit .zed/debug.json (it has comments or trailing commas). Nothing was changed. Paste these entries into the file:',
-      ),
-    );
-    expect(out(), contains('"label": "Flutter: Debug"'));
-    expect(out(), contains('Zed puts in new files'));
-    expect(out().trimRight(), endsWith('Done with 1 manual step.'));
-    expect(
-      Directory(zed('')).listSync().map((f) => p.basename(f.path)),
-      isNot(contains('debug.json.bak')),
-    );
+    File(zed('debug.json')).writeAsStringSync('// my scenarios\n[]\n');
+    expect(await run([]), 0);
+    expect(read('debug.json'), startsWith('// my scenarios\n['));
+    expect(read('debug.json'), contains('"label": "Flutter: Debug"'));
+    expect(out(), contains('.zed/debug.json: Added 4 entries'));
   });
 
   test('root-object file counts as invalid', () async {
@@ -195,8 +182,8 @@ void main() {
   test('both files invalid: two manual steps', () async {
     writeProject();
     Directory(p.join(tmp.path, '.zed')).createSync();
-    File(zed('debug.json')).writeAsStringSync('// a\n[]');
-    File(zed('tasks.json')).writeAsStringSync('[,]');
+    File(zed('debug.json')).writeAsStringSync('{"a":1}');
+    File(zed('tasks.json')).writeAsStringSync('not json');
     expect(await run([]), 9);
     expect(out(), contains('Done with 2 manual steps.'));
   });
@@ -204,42 +191,37 @@ void main() {
   test('--force backs up (numbered) then overwrites', () async {
     writeProject();
     Directory(p.join(tmp.path, '.zed')).createSync();
-    File(zed('debug.json')).writeAsStringSync('// one\n[]');
+    File(zed('debug.json')).writeAsStringSync('// one\n{}');
     expect(await run(['--force']), 0);
-    expect(File(zed('debug.json.bak')).readAsStringSync(), '// one\n[]');
+    expect(File(zed('debug.json.bak')).readAsStringSync(), '// one\n{}');
     expect(jsonDecode(read('debug.json')), hasLength(4));
     expect(out(), contains('Backed up to debug.json.bak'));
 
-    File(zed('debug.json')).writeAsStringSync('// two\n[]');
+    File(zed('debug.json')).writeAsStringSync('// two\n{}');
     console.outLines.clear();
     expect(await run(['--force']), 0);
-    expect(File(zed('debug.json.bak')).readAsStringSync(), '// one\n[]');
-    expect(File(zed('debug.json.bak.1')).readAsStringSync(), '// two\n[]');
+    expect(File(zed('debug.json.bak')).readAsStringSync(), '// one\n{}');
+    expect(File(zed('debug.json.bak.1')).readAsStringSync(), '// two\n{}');
     expect(out(), contains('Backed up to debug.json.bak.1'));
   });
 
   test('--force --dry-run writes nothing', () async {
     writeProject();
     Directory(p.join(tmp.path, '.zed')).createSync();
-    File(zed('debug.json')).writeAsStringSync('// x\n[]');
+    File(zed('debug.json')).writeAsStringSync('// x\n{}');
     await run(['--force', '--dry-run']);
-    expect(read('debug.json'), '// x\n[]');
+    expect(read('debug.json'), '// x\n{}');
     expect(File(zed('debug.json.bak')).existsSync(), isFalse);
   });
 
-  test('prints key table, keymap steps and console note', () async {
+  test('prints key table, the keymap command and console note', () async {
     writeProject();
     await run([]);
     final text = out();
     expect(text, contains('F4'));
-    expect(text, contains('F5 does nothing while the app runs'));
-    expect(
-      text,
-      contains(
-        'Open the command palette, run "zed: open keymap file", and paste the snippet.',
-      ),
-    );
-    expect(text, contains('"context": "Workspace && debugger_session"'));
+    expect(text, contains('Ctrl+F5'));
+    expect(text, contains('run "flutter_run keymap" once'));
+    expect(text, isNot(contains('"context"')));
     expect(
       text,
       contains(
@@ -249,14 +231,35 @@ void main() {
     expect(text, contains('usually committed'));
   });
 
-  test('macOS note only on macOS', () async {
+  test('the key table shows the macOS restart key on macOS', () async {
     writeProject();
     await run([], os: HostOs.macos);
-    expect(out(), contains('Use F1, F2'));
-    expect(out(), contains('shift-cmd-f5'));
-    console.outLines.clear();
-    await run([], os: HostOs.linux);
-    expect(out(), isNot(contains('Use F1, F2')));
+    expect(out(), contains('Shift+Cmd+F5'));
+  });
+
+  test('flavor entry points and local packages are picked up', () async {
+    File(p.join(tmp.path, 'pubspec.yaml')).writeAsStringSync(
+      'name: app\ndependencies:\n  flutter:\n    sdk: flutter\n'
+      '  app_ui:\n    path: packages/app_ui\n',
+    );
+    Directory(p.join(tmp.path, 'packages', 'app_ui'))
+        .createSync(recursive: true);
+    Directory(p.join(tmp.path, 'lib')).createSync();
+    File(p.join(tmp.path, 'lib', 'main_dev.dart')).writeAsStringSync('');
+    expect(await run([]), 0);
+    final debug = jsonDecode(read('debug.json')) as List<Object?>;
+    final first = debug.first! as Map<String, Object?>;
+    expect(first['label'], 'Flutter: Debug dev');
+    expect(first['program'], 'lib/main_dev.dart');
+    expect(first['reloadOnSaveGlobs'], ['packages/app_ui/lib/**.dart']);
+    expect(out(), contains('Found entry point lib/main_dev.dart.'));
+    expect(out(), contains('packages/app_ui/lib/**.dart'));
+  });
+
+  test('a missing lib/main.dart is reported', () async {
+    writeProject();
+    await run([]);
+    expect(out(), contains('lib/main.dart does not exist'));
   });
 
   test('PATH check: found', () async {
