@@ -401,6 +401,49 @@ void main() {
       });
     });
 
+    test('polling slows down once the tree stops changing', () {
+      fakeAsync((fa) {
+        final rig = Rig(fa);
+        rig.adapter.descendants = {1};
+        rig.coordinator.startSnapshots();
+        // First poll at 0.3 s, then every 2 s: the 4th poll (6.3 s) is the
+        // third unchanged one in a row.
+        fa.elapse(const Duration(milliseconds: 6400));
+        expect(rig.adapter.snapshotCalls, 4);
+        fa.elapse(const Duration(seconds: 19));
+        expect(rig.adapter.snapshotCalls, 4);
+        fa.elapse(const Duration(seconds: 1));
+        expect(rig.adapter.snapshotCalls, 5);
+      });
+    });
+
+    test('process activity snapshots at once and restores the fast rate', () {
+      fakeAsync((fa) {
+        final rig = Rig(fa);
+        rig.adapter.descendants = {1};
+        rig.coordinator.startSnapshots();
+        fa.elapse(const Duration(milliseconds: 6400));
+        expect(rig.adapter.snapshotCalls, 4);
+        rig.coordinator.refreshSnapshot();
+        fa.flushMicrotasks();
+        expect(rig.adapter.snapshotCalls, 5);
+        fa.elapse(const Duration(seconds: 2));
+        expect(rig.adapter.snapshotCalls, 6);
+      });
+    });
+
+    test('a changing tree keeps the fast rate', () {
+      fakeAsync((fa) {
+        final rig = Rig(fa);
+        rig.coordinator.startSnapshots();
+        for (var i = 0; i < 6; i++) {
+          rig.adapter.descendants = {i};
+          fa.elapse(const Duration(seconds: 2));
+        }
+        expect(rig.adapter.snapshotCalls, 6);
+      });
+    });
+
     test('beginFinish stops the periodic snapshots', () {
       fakeAsync((fa) {
         final rig = Rig(fa);

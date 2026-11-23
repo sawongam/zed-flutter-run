@@ -56,6 +56,7 @@ class ProxyOptions {
     this.initializeTimeout = const Duration(seconds: 120),
     this.initializeNoticeAfter = const Duration(seconds: 10),
     this.snapshotInterval = const Duration(seconds: 2),
+    this.stableSnapshotInterval = const Duration(seconds: 20),
     this.timings = const ProxyTimings(),
   });
 
@@ -75,9 +76,16 @@ class ProxyOptions {
   /// Flutter is still starting.
   final Duration initializeNoticeAfter;
 
-  /// How often the adapter's descendants are recorded while it runs (reading
-  /// the process table is slower on Windows, so the caller may raise this).
+  /// How often the adapter's descendants are recorded while its process tree
+  /// changes (reading the process table is slower on Windows, so the caller
+  /// may raise this).
   final Duration snapshotInterval;
+
+  /// The poll interval once the tree looked the same a few times in a row.
+  /// The snapshots only matter for cleaning up after a crash, and process
+  /// activity (a new isolate, the VM service coming up) still takes one at
+  /// once, so a settled session needs no fast polling.
+  final Duration stableSnapshotInterval;
 
   /// The remaining fixed waits.
   final ProxyTimings timings;

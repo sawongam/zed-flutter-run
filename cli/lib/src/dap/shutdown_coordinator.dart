@@ -56,12 +56,10 @@ class ShutdownCoordinator {
     required this.phase,
     required this.clock,
     required this.options,
-    required Logger log,
-    Future<void> Function()? onShutdownStarted,
-    Future<void> Function()? onShutdownCleanup,
-  }) : _log = log,
-       _onShutdownStarted = onShutdownStarted,
-       _onShutdownCleanup = onShutdownCleanup;
+    required this._log,
+    this._onShutdownStarted,
+    this._onShutdownCleanup,
+  });
 
   final ShutdownHost host;
   final AdapterConnection adapter;
@@ -75,11 +73,12 @@ class ShutdownCoordinator {
   ProxyTimings get _t => options.timings;
 
   // adapter facts
-  bool _adapterExited = false;
   bool _crashed = false;
   bool _treeKilled = false;
   final Completer<void> _adapterExit = Completer<void>();
   final Completer<void> _terminatedSeen = Completer<void>();
+
+  bool get _adapterExited => _adapterExit.isCompleted;
 
   // terminate flow
   StopFlow _terminate = StopFlow.idle;
@@ -97,7 +96,6 @@ class ShutdownCoordinator {
   Timer? _disconnectTimer;
 
   bool _shutdownRequested = false;
-  bool _finishing = false;
 
   // shared plumbing
   Future<Set<int>>? _startFuture;
@@ -107,8 +105,11 @@ class ShutdownCoordinator {
   // descendant snapshots
   final List<Set<int>> _recent = [];
   bool _snapshotRunning = false;
+  int _unchangedSnapshots = 0;
   Timer? _snapshotTimer;
-  Timer? _firstSnapshotTimer;
+
+  /// Unchanged snapshots in a row after which polling slows down.
+  static const int stableAfter = 3;
 
   bool get terminatedSeen => _terminatedSeen.isCompleted;
 
@@ -129,7 +130,6 @@ class ShutdownCoordinator {
 
   /// The adapter exited; its messages are still being drained.
   void markAdapterExited() {
-    _adapterExited = true;
     if (!_adapterExit.isCompleted) _adapterExit.complete();
     _snapshotTimer?.cancel();
   }
@@ -150,34 +150,60 @@ class ShutdownCoordinator {
   /// Begins recording the adapter's descendants while it runs, so a killed
   /// adapter's reparented children can still be swept (also on Windows,
   /// where `taskkill /T` alone needs a live parent).
-  void startSnapshots() {
-    _firstSnapshotTimer = clock.timer(_t.firstSnapshotDelay, refreshSnapshot);
-    _snapshotTimer = clock.periodic(
-      options.snapshotInterval,
-      (_) => refreshSnapshot(),
-    );
+  void startSnapshots() => _scheduleSnapshot(_t.firstSnapshotDelay);
+
+  /// The adapter's process tree may have changed: snapshot now and poll at
+  /// the fast rate again.
+  void refreshSnapshot() {
+    _unchangedSnapshots = 0;
+    _takeSnapshot();
   }
 
-  void refreshSnapshot() {
-    if (_adapterExited || phase.isFinishing || _startFuture != null) return;
-    if (host.programEnded || _snapshotRunning) return;
+  bool get _snapshotsOver =>
+      _adapterExited ||
+      phase.isFinishing ||
+      _startFuture != null ||
+      host.programEnded;
+
+  void _scheduleSnapshot(Duration delay) {
+    _snapshotTimer?.cancel();
+    _snapshotTimer = clock.timer(delay, _takeSnapshot);
+  }
+
+  void _takeSnapshot() {
+    if (_snapshotsOver || _snapshotRunning) return;
     _snapshotRunning = true;
-    // Fire-and-forget periodic snapshot; failures are logged, not propagated.
+    _snapshotTimer?.cancel();
+    // Fire-and-forget snapshot; failures are logged, not propagated.
     unawaited(
       withTimeout(clock, adapter.snapshotDescendants(), _t.snapshotWait)
           .then<void>((pids) {
             if (_adapterExited || _startFuture != null) return;
+            final last = _recent.isEmpty ? null : _recent.last;
+            final same =
+                last != null &&
+                last.length == pids.length &&
+                last.containsAll(pids);
+            _unchangedSnapshots = same ? _unchangedSnapshots + 1 : 0;
             _recent.add(pids);
             if (_recent.length > 2) _recent.removeAt(0);
           }, onError: (Object e) => _log.debug('Periodic snapshot failed: $e'))
-          .whenComplete(() => _snapshotRunning = false),
+          .whenComplete(() {
+            _snapshotRunning = false;
+            if (_snapshotsOver) return;
+            _scheduleSnapshot(
+              _unchangedSnapshots >= stableAfter
+                  ? options.stableSnapshotInterval
+                  : options.snapshotInterval,
+            );
+          }),
     );
   }
 
   Future<void> handleTerminate(DapMessage message) async {
     // The final teardown already began: nothing to stop any more, and a new
     // flow would leave timers and a late synthetic answer behind.
-    if (_finishing || phase.isFinishing) return;
+    if (phase.isFinishing) return;
     if (terminateRequested) {
       host.sendToAdapter(message.raw);
       return;
@@ -303,7 +329,7 @@ class ShutdownCoordinator {
     }
     if (disconnectRequested && requestSeq == _disconnectSeq) {
       _heldDisconnectResponse = response.raw;
-      if (_finishing) return true;
+      if (phase.isFinishing) return true;
       // The adapter answered: do not make the editor wait for it to exit.
       _disconnectTimer?.cancel();
       _disconnectTimer = clock.timer(_t.disconnectGrace, () {
@@ -445,15 +471,15 @@ class ShutdownCoordinator {
     }
   }
 
-  /// Called when the final teardown begins: stops every timer and releases
-  /// anyone waiting for the terminate.
+  /// Called when the final teardown begins: moves the phase to finishing (if
+  /// the owner has not yet), stops every timer and releases anyone waiting
+  /// for the terminate.
   void beginFinish() {
+    phase.transition(SessionPhase.finishing);
     _snapshotTimer?.cancel();
-    _firstSnapshotTimer?.cancel();
     _terminateTimer?.cancel();
     _stoppingTimer?.cancel();
     _disconnectTimer?.cancel();
-    _finishing = true;
     if (terminateRequested) _terminate = StopFlow.finished;
     if (!_terminateDone.isCompleted) _terminateDone.complete();
   }

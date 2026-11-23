@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../common/host_environment.dart';
+import '../common/paths.dart';
 
 /// Outcome of one SDK resolution step.
 enum StepOutcome { skipped, notFound, invalid, found }
@@ -66,16 +67,7 @@ class LocalSdkFileSystem implements SdkFileSystem {
       FileSystemEntityType.notFound;
 
   @override
-  bool isExecutableFile(String path) {
-    try {
-      final stat = FileStat.statSync(path);
-      if (stat.type != FileSystemEntityType.file) return false;
-      if (_env.isWindows) return true;
-      return (stat.mode & 0x49) != 0;
-    } on FileSystemException {
-      return false;
-    }
-  }
+  bool isExecutableFile(String path) => isExecutableFileAt(path, _env);
 
   @override
   String? resolveLink(String path) {

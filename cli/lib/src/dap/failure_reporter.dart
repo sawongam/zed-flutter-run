@@ -9,12 +9,10 @@ class FailureReporter {
   FailureReporter({
     required this.watchdog,
     required this.stderrTail,
-    required void Function(DapJson message) send,
-    required int Function() nextSeq,
-    required void Function(String text, NoticeLevel level) notice,
-  }) : _send = send,
-       _nextSeq = nextSeq,
-       _notice = notice;
+    required this._send,
+    required this._nextSeq,
+    required this._notice,
+  });
 
   final InitializeWatchdog watchdog;
   final StderrTail stderrTail;

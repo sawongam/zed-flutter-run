@@ -135,9 +135,9 @@ void main() {
       final adapter = await h.adapterPid();
       expect(adapter, isNotNull);
       final adapterLine = (await commandLines([adapter!])).values.single;
-      final adapterTree = (await commandLines(
-        await descendantsOf(h.pid),
-      )).values.join('\n');
+      final adapterTree = (await commandLines(await descendantsOf(h.pid)))
+          .values
+          .join('\n');
       expect('$adapterLine\n$adapterTree', contains('--no-dds'));
 
       final session = h.ownSession()!;

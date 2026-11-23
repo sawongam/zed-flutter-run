@@ -7,6 +7,7 @@ import '../common/errors.dart';
 import '../common/global_options.dart';
 import '../common/logger.dart';
 import '../dap/channel.dart';
+import '../dap/injected_requests.dart';
 import '../dap/launch_rewriter.dart';
 import '../dap/messages.dart';
 import '../dap/notices.dart';
@@ -16,9 +17,6 @@ import '../sdk/sdk_resolver.dart';
 import 'dap_session_host.dart';
 import 'signal_source.dart';
 import 'wiring.dart';
-
-/// First sequence number of messages the proxy makes up itself.
-const int _syntheticSeq = 1000000000;
 
 /// Answers the client's first request with a failure, mirrors the text to the
 /// client's console (stderr category) and closes the channel.
@@ -48,7 +46,7 @@ Future<void> answerStartupFailure(
         command: first['command'] as String? ?? 'initialize',
         success: false,
         message: text,
-        seq: _syntheticSeq,
+        seq: InjectedRequests.firstSeq,
       ),
     );
   }
@@ -56,7 +54,7 @@ Future<void> answerStartupFailure(
     makeOutputEvent(
       formatNotice(text, NoticeLevel.error),
       category: 'stderr',
-      seq: _syntheticSeq + 1,
+      seq: InjectedRequests.firstSeq + 1,
     ),
   );
   await client.flush();
@@ -67,19 +65,15 @@ Future<void> answerStartupFailure(
 class DapCommand extends Command<int> {
   DapCommand(
     this._wiring, {
-    Stream<List<int>>? input,
-    StreamSink<List<int>>? output,
-    IOSink? errorSink,
-    String? resolvedExecutable,
+    this._input,
+    this._output,
+    this._errorSink,
+    this._resolvedExecutable,
     this.attachWatchdog = const Duration(seconds: 15),
     this.startupResponseWait = const Duration(seconds: 2),
     this.sessionWriteDebounce = const Duration(milliseconds: 50),
     SignalSource? signalSource,
-  }) : _signals = signalSource ?? const SystemSignalSource(),
-       _input = input,
-       _output = output,
-       _errorSink = errorSink,
-       _resolvedExecutable = resolvedExecutable {
+  }) : _signals = signalSource ?? const SystemSignalSource() {
     GlobalOptions.addTo(argParser);
     argParser
       ..addOption(
@@ -270,7 +264,7 @@ class DapCommand extends Command<int> {
       if (kind == DapKind.flutter && request == 'attach') '--no-dds',
     ];
     final base = buildProcessSpec(executable, args, env);
-    return ManagedProcess.start(
+    return _wiring.processRunner.start(
       ProcessSpec(base.executable, base.arguments, workingDirectory: cwd),
       logger: logger,
     );

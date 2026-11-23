@@ -10,6 +10,8 @@ import 'package:flutter_run/src/sdk/process_tree.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+final _host = HostEnvironment.system();
+
 const _childScript = '''
 import 'dart:async';
 import 'dart:io';
@@ -84,6 +86,7 @@ void main() {
       final parent = script('parent.dart', _parentScript);
       final proc = await ManagedProcess.start(
         ProcessSpec(Platform.resolvedExecutable, [parent, child]),
+        host: _host,
       );
       addTearDown(() async {
         await proc.terminateTree(grace: const Duration(milliseconds: 200));
@@ -118,6 +121,7 @@ void main() {
         final parent = script('parent.dart', _parentScript);
         final proc = await ManagedProcess.start(
           ProcessSpec(Platform.resolvedExecutable, [parent, child]),
+          host: _host,
         );
         final lines = proc.stdout
             .transform(utf8.decoder)
@@ -148,6 +152,7 @@ void main() {
           '-c',
           "'${adb.path}' & sleep 62 & echo ready; wait",
         ]),
+        host: _host,
       );
       await proc.stdout
           .transform(utf8.decoder)
@@ -187,6 +192,7 @@ void main() {
           '-c',
           'trap "" TERM; echo ready; while :; do sleep 0.2; done',
         ]),
+        host: _host,
       );
       await proc.stdout
           .transform(utf8.decoder)
@@ -207,6 +213,7 @@ void main() {
           'a',
           'b',
         ]),
+        host: _host,
       );
       final out = proc.stdout.transform(utf8.decoder).join();
       final err = proc.stderr.transform(utf8.decoder).join();
@@ -221,6 +228,7 @@ void main() {
       await expectLater(
         ManagedProcess.start(
           ProcessSpec(p.join(tmp.path, 'does_not_exist'), const []),
+          host: _host,
         ),
         throwsA(isA<ExternalToolException>()),
       );
@@ -235,6 +243,7 @@ void main() {
           ),
         ]),
         environment: {'RD_TEST_VAR': 'hello'},
+        host: _host,
       );
       expect(r.stdout, 'hello');
     });
@@ -247,6 +256,7 @@ void main() {
           script('echo.dart', _echoScript),
           'x',
         ]),
+        host: _host,
       );
       expect(r.exitCode, 3);
       expect(r.stdout, 'out:x');
@@ -261,9 +271,10 @@ void main() {
         runTool(
           ProcessSpec(Platform.resolvedExecutable, [child, pidFile]),
           timeout: const Duration(seconds: 3),
+          host: _host,
         ),
         throwsA(
-          isA<ExternalToolException>().having(
+          isA<ToolTimeoutException>().having(
             (e) => e.message,
             'message',
             contains('did not finish'),

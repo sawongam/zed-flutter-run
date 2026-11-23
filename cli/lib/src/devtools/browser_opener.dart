@@ -31,8 +31,10 @@ abstract interface class BrowserOpener {
 }
 
 /// Runs a process and returns its exit code (a fake in tests).
-typedef BrowserProcessRunner =
-    Future<int> Function(String executable, List<String> arguments);
+typedef BrowserProcessRunner = Future<int> Function(
+  String executable,
+  List<String> arguments,
+);
 
 /// Starts the launcher detached (no pipes are captured, so a browser that the
 /// launcher leaves running in the background cannot block or time out the

@@ -67,8 +67,7 @@ Future<void> ensureOwnerOnlyDirectory(String path, HostEnvironment env) async {
       FileSystemEntity.typeSync(path, followLinks: false);
   FlutterRunException refuse() => FlutterRunException(
     'The folder $path is a link or not a normal folder, so it is not used.',
-    hint:
-        'Remove it, or set FLUTTER_RUN_STATE_DIR to another folder that only you can write to.',
+    hint: 'Remove it, or set FLUTTER_RUN_STATE_DIR to another folder that only you can write to.',
   );
   var type = typeOf();
   if (type != FileSystemEntityType.notFound &&
@@ -81,13 +80,28 @@ Future<void> ensureOwnerOnlyDirectory(String path, HostEnvironment env) async {
     if (type != FileSystemEntityType.directory) throw refuse();
   }
   if (env.isWindows) return;
-  final result = await Process.run('/bin/chmod', ['700', path]);
-  if (result.exitCode != 0) {
+  if (!restrictToOwner(path, 0x1C0)) {
     throw FlutterRunException(
       'Could not restrict the folder $path to your user.',
       exitCode: ExitCodes.internal,
-      hint:
-          'Check that you own the folder, or set FLUTTER_RUN_STATE_DIR to another one.',
+      hint: 'Check that you own the folder, or set FLUTTER_RUN_STATE_DIR to another one.',
     );
+  }
+}
+
+/// Sets the permission bits of [path] to [mode] (for example `0x1C0`, octal
+/// 700) on POSIX. Dart has no chmod, so this starts `/bin/chmod`; it is
+/// skipped when the mode is already right, which is the common case for the
+/// state folders. Returns false when the mode could not be set.
+bool restrictToOwner(String path, int mode) {
+  if (FileStat.statSync(path).mode & 0x1FF == mode) return true;
+  try {
+    return Process.runSync('/bin/chmod', [
+          mode.toRadixString(8),
+          path,
+        ]).exitCode ==
+        0;
+  } on ProcessException {
+    return false;
   }
 }

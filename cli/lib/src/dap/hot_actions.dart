@@ -21,6 +21,9 @@ abstract interface class RequestInjector {
 
 enum HotError { notStarted, busy, adapterError, timeout, sessionEnded }
 
+/// What a [HotError.busy] result says.
+const String busyMessage = 'Another hot reload or restart is still running.';
+
 class HotResult {
   const HotResult({
     required this.ok,
@@ -66,8 +69,8 @@ class HotActions {
     this._injector, {
     this.timeout = const Duration(seconds: 120),
     this.waitingNoticeAfter = const Duration(seconds: 3),
-    Clock clock = const SystemClock(),
-  }) : _clock = clock;
+    this._clock = const SystemClock(),
+  });
 
   static const Duration _lateLimit = Duration(minutes: 10);
 
@@ -143,11 +146,8 @@ class HotActions {
     }
   }
 
-  HotResult _busy() => const HotResult(
-    ok: false,
-    error: HotError.busy,
-    message: 'Another hot reload or restart is still running.',
-  );
+  HotResult _busy() =>
+      const HotResult(ok: false, error: HotError.busy, message: busyMessage);
 
   Future<HotResult> _run(_Action action, String reason) {
     final flight = _Flight(action);
@@ -158,12 +158,10 @@ class HotActions {
     final noun = isReload ? 'Reload' : 'Restart';
     Timer? waitingTimer;
     Timer? timeoutTimer;
-    Timer? lateTimer;
 
     void finish() {
       waitingTimer?.cancel();
       timeoutTimer?.cancel();
-      lateTimer?.cancel();
       if (identical(_current, flight)) _current = null;
     }
 
@@ -197,8 +195,8 @@ class HotActions {
         );
       });
     }
-    lateTimer = _clock.timer(_lateLimit, finish);
-
+    // [_lateLimit] bounds the injected request itself: when it expires the
+    // request fails with a TimeoutException, which ends this flight.
     Future<DapJson> pending;
     try {
       pending = _injector.inject(command, <String, Object?>{

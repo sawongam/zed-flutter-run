@@ -49,9 +49,8 @@ class SavedDevice {
 
 /// Saved device per project, in the per-user state directory.
 class DeviceStore {
-  DeviceStore(this._env, {Logger? logger, Clock clock = const SystemClock()})
-    : _logger = logger ?? Logger.silent(),
-      _clock = clock;
+  DeviceStore(this._env, {Logger? logger, this._clock = const SystemClock()})
+    : _logger = logger ?? Logger.silent();
 
   static const int fileVersion = 1;
 

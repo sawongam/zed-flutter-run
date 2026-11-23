@@ -126,6 +126,8 @@ The other ways to end:
 - The adapter exits on its own with code 0 after `terminated`: the session ends with 0. Any other unasked exit is a crash. The proxy fails a pending `initialize`, relays the adapter's stderr, posts a notice, sends a `terminated` event and exits with the adapter's code.
 - Attach sessions never get an injected `terminate`, so the app keeps running. `attach` also starts `flutter debug_adapter --no-dds`, because `flutter run` already runs a DDS.
 
+While the adapter runs, the coordinator records its descendants so a crash can still be cleaned up. It polls every 2 seconds (6 on Windows). After three readings in a row that show the same tree it polls every 20 seconds (30 on Windows), and process activity the tracker reports (a new VM service, the app starting) takes a reading at once and goes back to the fast rate.
+
 The kill step ends the adapter if it is still alive and its descendants as read at that moment. `ManagedProcess.terminateTree` reads the process table once and passes the reader to `killTree` (`sdk/process_tree.dart`). On POSIX `killTree` sends SIGTERM, waits two seconds and sends SIGKILL, signalling only pids that are provably ours: current descendants, or snapshot pids whose recorded start time still matches. Pids 0 and 1 are never signalled. On Windows it runs `taskkill /T /F`. Processes seen earlier that have left the tree, such as a Gradle daemon, are not touched. After a crash, earlier descendants are included, except `adb`, Gradle and Kotlin daemons and the Dart tooling daemon (`isSharedDaemonCommand`). All waits are in `proxy_options.dart` (`ProxyOptions`, `ProxyTimings`), so tests shrink them.
 
 ## Control channel
@@ -161,7 +163,7 @@ Zed has no on-save hook for extensions, so `ReloadOnSaveWatcher` (`cli/lib/src/w
 
 - Watched folders (`PathFilter.watchDirectories`): `lib/`, `bin/` for Dart programs, and the fixed folder prefix of each entry in `reloadOnSaveGlobs`. A glob without a folder prefix is reported and ignored.
 - A path triggers if it ends in `.dart` or matches a glob. Hidden segments are ignored at any depth. `build`, `.dart_tool`, `.git` and `node_modules` are ignored at the project's top level.
-- In `changed` mode a file triggers only if the SHA-256 of its content differs from the last seen one (`ContentHashTracker`; files over 2 MiB always count, at most 5000 entries kept).
+- In `changed` mode a file triggers only if the SHA-256 of its content differs from the last seen one (`ContentHashTracker`; files over 2 MiB always count, at most 5000 entries kept). The files already present when the watcher starts are hashed once, on a background isolate (`ContentHashTracker.seed`), so the CPU this takes does not hold up the DAP traffic.
 - `ReloadCoalescer` waits for the debounce (default 200 ms, range 10 to 5000), runs one reload at a time and queues at most one follow-up. If `HotActions` answers busy, it retries with a growing delay of at most 2 seconds.
 - The reload is `HotActions.reload(reason: 'save')`. A save-triggered reload has no timeout of its own, because the app may be paused at a breakpoint.
 - It is not started when `reloadOnSave` is `off` or the app runs in profile, release or jit_release mode.
@@ -197,7 +199,7 @@ All of this is under `cli/lib/src/`.
 | `watch/` | Reload-on-save settings, path filter, content hashes, coalescer, watcher |
 | `devtools/` | Page names, URL building, browser opener, the `devtools` command |
 | `init/` | Project detection, scenario and task templates, JSON merge, keymap snippet, the `init` command |
-| `cli/` | `FlutterRunRunner`, `Wiring`, `CommandContext`, `DapCommand`, `DapSessionHost`, `SessionNotices`, `doctor` and `version` |
+| `cli/` | `FlutterRunRunner`, `Wiring`, `buildCommands`, `DapCommand`, `DapSessionHost`, `SessionNotices`, `doctor` and `version` |
 
 Import rule: `common/` imports no other module, each feature module imports only `common/` and itself, and only `cli/` imports the feature modules and connects them. `cli/test/unit/architecture_test.dart` checks every import.
 
@@ -231,7 +233,7 @@ Outside the state directory: `.zed/debug.json` and `.zed/tasks.json` in the proj
 ## Security
 
 - The control server binds `127.0.0.1` only. The only credential is the token in the session file, which sits in a user-only directory. A process of the same user can read it, and nothing defends against that.
-- Control commands are a fixed set. Nothing in a request is executed.
+- Control commands are a fixed set (the handler map in `ControlServer`). Nothing in a request is executed.
 - Child processes start without a shell. For `.bat` and `.cmd` targets on Windows, arguments with `cmd.exe` metacharacters are refused. Emulator ids are checked before `--launch`, and `select-device --device` must name a connected device.
 - DevTools addresses are opened only if they point to `127.0.0.1`, `localhost` or `::1` (`isSafeBrowserUrl`).
 - The extension downloads only from `github.com/sawongam/zed-flutter-run`, declared in the `download_file` capability of `extension.toml`, and only runs a file whose SHA-256 matches the pin.

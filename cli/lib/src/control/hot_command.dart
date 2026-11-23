@@ -18,18 +18,13 @@ import 'session_store.dart';
 /// started Flutter session at once and report one line per session.
 abstract class HotActionCommand extends Command<int> {
   HotActionCommand({
-    required SessionStore store,
-    required ControlClient client,
-    required HostEnvironment env,
-    required Console console,
-    required Duration waitingNoticeAfter,
-    Clock clock = const SystemClock(),
-  }) : _store = store,
-       _client = client,
-       _env = env,
-       _console = console,
-       _waitingNoticeAfter = waitingNoticeAfter,
-       _clock = clock {
+    required this._store,
+    required this._client,
+    required this._env,
+    required this._console,
+    required this._waitingNoticeAfter,
+    this._clock = const SystemClock(),
+  }) {
     GlobalOptions.addTo(argParser);
     argParser.addOption(
       'timeout',

@@ -27,9 +27,8 @@ class StreamDapChannel implements DapChannel {
     StreamSink<List<int>> output, {
     Logger? logger,
     String label = '',
-    Clock clock = const SystemClock(),
+    this._clock = const SystemClock(),
   }) : _output = output,
-       _clock = clock,
        _logger = logger ?? Logger.silent(),
        _label = label,
        _inLabel = '$label<',

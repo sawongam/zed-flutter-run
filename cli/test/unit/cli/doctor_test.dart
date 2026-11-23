@@ -64,12 +64,10 @@ void main() {
     final sdk = makeFakeSdk('${t.dir.path}/sdk');
     final info = detectProject(project, t.wiring.env);
     Directory('$project/.zed').createSync();
-    File(
-      '$project/.zed/debug.json',
-    ).writeAsStringSync(jsonEncode(debugScenarios(info)));
-    File(
-      '$project/.zed/tasks.json',
-    ).writeAsStringSync(jsonEncode([zedTasks(info).first]));
+    File('$project/.zed/debug.json')
+        .writeAsStringSync(jsonEncode(debugScenarios(info)));
+    File('$project/.zed/tasks.json')
+        .writeAsStringSync(jsonEncode([zedTasks(info).first]));
     await runner.execute([
       'doctor',
       '--project',

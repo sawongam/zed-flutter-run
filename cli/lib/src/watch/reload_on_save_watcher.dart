@@ -34,24 +34,16 @@ class ReloadOutcome {
 /// Watches the allow-listed directories and hot reloads on save.
 class ReloadOnSaveWatcher {
   ReloadOnSaveWatcher({
-    required String projectRoot,
-    required bool isDartProgram,
-    required ReloadOnSaveConfig config,
-    required HostEnvironment env,
-    required Future<ReloadOutcome> Function() reload,
-    required void Function(String text, {required bool isError}) notice,
+    required this._projectRoot,
+    required this._isDartProgram,
+    required this._config,
+    required this._env,
+    required this._reload,
+    required this._notice,
     Logger? logger,
-    Stream<WatchEvent> Function(String directory)? watcherFactory,
-    Clock clock = const SystemClock(),
-  }) : _projectRoot = projectRoot,
-       _isDartProgram = isDartProgram,
-       _config = config,
-       _env = env,
-       _reload = reload,
-       _notice = notice,
-       _logger = logger ?? Logger.silent(),
-       _watcherFactory = watcherFactory,
-       _clock = clock;
+    this._watcherFactory,
+    this._clock = const SystemClock(),
+  }) : _logger = logger ?? Logger.silent();
 
   final String _projectRoot;
   final bool _isDartProgram;
@@ -207,33 +199,28 @@ class ReloadOnSaveWatcher {
   /// (or an editor rewriting identical bytes) do not count as changes. Stops
   /// at the tracker's capacity: older entries would be evicted anyway.
   Future<void> _baseline(List<String> dirs) async {
-    final inFlight = <Future<bool>>[];
-    var count = 0;
+    final files = <String, String>{};
     scan:
     for (final dir in dirs) {
       try {
         await for (final entity in Directory(
           dir,
         ).list(recursive: true, followLinks: false)) {
-          if (!_running || count >= _hashes.maxEntries) break scan;
+          if (!_running || files.length >= _hashes.maxEntries) break scan;
           if (entity is! File || !_filter.shouldTrigger(entity.path)) continue;
-          count++;
-          inFlight.add(
-            _hashes.hasChanged(entity.path, key: pathKey(entity.path, _env)),
-          );
-          if (inFlight.length >= _baselineConcurrency) {
-            await Future.wait(inFlight);
-            inFlight.clear();
-          }
+          files[entity.path] = pathKey(entity.path, _env);
         }
       } on Object catch (e) {
         _logger.debug('Reload on save baseline skipped for $dir: $e');
       }
     }
-    await Future.wait(inFlight);
+    if (!_running || files.isEmpty) return;
+    try {
+      await _hashes.seed(files);
+    } on Object catch (e) {
+      _logger.debug('Reload on save baseline failed: $e');
+    }
   }
-
-  static const int _baselineConcurrency = 16;
 
   void _onEvent(WatchEvent event) {
     if (!_running) return;

@@ -17,7 +17,6 @@ import '../devices/device_lister.dart';
 import '../devices/device_store.dart';
 import '../devices/flutter_runner_factory.dart';
 import '../devtools/browser_opener.dart';
-import '../devtools/commands/devtools_command.dart';
 import '../devtools/vm_service_target_resolver.dart';
 import '../sdk/managed_process.dart';
 import '../sdk/process_runner.dart';
@@ -34,19 +33,28 @@ class Wiring {
     required this.logger,
     this.clock = const SystemClock(),
     this.signals = const SystemSignalSource(),
-    this.processRunner = const SystemProcessRunner(),
+    ProcessRunner? processRunner,
     SdkResolver? sdkResolver,
     SessionStore? sessionStore,
     ControlClient? controlClient,
     DeviceStore? deviceStore,
     BrowserOpener? browserOpener,
-  }) : sdkResolver = sdkResolver ?? SdkResolver(env, logger: logger),
-       sessionStore = sessionStore ?? SessionStore(env, logger: logger),
+  }) : processRunner = processRunner ?? SystemProcessRunner(env),
+       sdkResolver = sdkResolver ?? SdkResolver(env, logger: logger),
        controlClient = controlClient ?? ControlClient(env: env),
        deviceStore =
            deviceStore ?? DeviceStore(env, logger: logger, clock: clock),
        browserOpener =
            browserOpener ?? SystemBrowserOpener(env, logger: logger) {
+    // The store pings sessions with the same client the commands use.
+    this.sessionStore =
+        sessionStore ??
+        SessionStore(
+          env,
+          logger: logger,
+          probe: this.controlClient,
+          clock: clock,
+        );
     flutterRunnerFactory = createFlutterRunnerFactory(
       currentDirectory: env.currentDirectory,
       resolveExecutable: ({projectDir, explicitSdk}) async {
@@ -58,7 +66,7 @@ class Wiring {
       },
       execute: (flutter, args, {workingDirectory, required timeout}) async {
         final base = buildProcessSpec(flutter, args, env);
-        final result = await processRunner.run(
+        final result = await this.processRunner.run(
           ProcessSpec(
             base.executable,
             base.arguments,
@@ -104,7 +112,7 @@ class Wiring {
   final Console console;
   final Logger logger;
   final SdkResolver sdkResolver;
-  final SessionStore sessionStore;
+  late final SessionStore sessionStore;
   final ControlClient controlClient;
   final DeviceStore deviceStore;
   final BrowserOpener browserOpener;
@@ -162,7 +170,7 @@ class ManagedAdapterConnection implements AdapterConnection {
 /// Answers control requests from `flutter_run reload|restart` using the
 /// proxy's [HotActions].
 class ProxySessionControl implements SessionControl {
-  ProxySessionControl(this._hot, {int? pid}) : _pid = pid;
+  ProxySessionControl(this._hot, {this._pid});
 
   final HotActions _hot;
   final int? _pid;
@@ -219,7 +227,7 @@ class ProxySessionControl implements SessionControl {
       ),
       HotError.busy => const ControlException(
         ControlErrorCode.busy,
-        'Another hot reload or restart is still running.',
+        busyMessage,
       ),
       HotError.adapterError => ControlException(
         ControlErrorCode.adapterError,

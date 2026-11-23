@@ -1,3 +1,4 @@
+import '../common/host_environment.dart';
 import '../common/logger.dart';
 import 'managed_process.dart';
 import 'process_spec.dart';
@@ -12,7 +13,7 @@ abstract interface class ProcessRunner {
   });
 
   /// Runs [spec] to completion; on [timeout] the process tree is killed and an
-  /// `ExternalToolException` is thrown.
+  /// `ToolTimeoutException` is thrown.
   Future<ToolOutput> run(
     ProcessSpec spec, {
     Map<String, String>? environment,
@@ -23,14 +24,21 @@ abstract interface class ProcessRunner {
 
 /// Real processes, through [ManagedProcess.start] and [runTool].
 class SystemProcessRunner implements ProcessRunner {
-  const SystemProcessRunner();
+  const SystemProcessRunner(this._host);
+
+  final HostEnvironment _host;
 
   @override
   Future<ManagedProcess> start(
     ProcessSpec spec, {
     Map<String, String>? environment,
     Logger? logger,
-  }) => ManagedProcess.start(spec, environment: environment, logger: logger);
+  }) => ManagedProcess.start(
+    spec,
+    host: _host,
+    environment: environment,
+    logger: logger,
+  );
 
   @override
   Future<ToolOutput> run(
@@ -38,6 +46,11 @@ class SystemProcessRunner implements ProcessRunner {
     Map<String, String>? environment,
     Duration timeout = const Duration(seconds: 60),
     Logger? logger,
-  }) =>
-      runTool(spec, environment: environment, timeout: timeout, logger: logger);
+  }) => runTool(
+    spec,
+    host: _host,
+    environment: environment,
+    timeout: timeout,
+    logger: logger,
+  );
 }

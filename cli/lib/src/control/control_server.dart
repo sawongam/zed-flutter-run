@@ -155,20 +155,12 @@ class ControlServer implements ControlEndpoint {
     }
   }
 
-  Future<Json> _dispatch(String command, Json args) async {
-    switch (command) {
-      case 'ping':
-        return _control.ping();
-      case 'reload':
-        return _control.reload(args);
-      case 'restart':
-        return _control.restart(args);
-    }
-    throw ControlException(
-      ControlErrorCode.unknownCommand,
-      'Unknown command "$command".',
-    );
-  }
+  /// The fixed command set: the one place a new command is added.
+  late final Map<String, Future<Json> Function(Json args)> _handlers = {
+    'ping': (_) async => _control.ping(),
+    'reload': _control.reload,
+    'restart': _control.restart,
+  };
 }
 
 /// One reply line: the result, or the error when [error] is set.
@@ -243,7 +235,7 @@ class _Connection {
           null,
           error: const ControlException(
             ControlErrorCode.payloadTooLarge,
-            'The request is larger than 65536 bytes.',
+            'The request is larger than $maxControlLineBytes bytes.',
           ),
         ),
       );
@@ -311,7 +303,8 @@ class _Connection {
           '"command" must be a string.',
         );
       }
-      if (!controlCommands.contains(command)) {
+      final handler = _owner._handlers[command];
+      if (handler == null) {
         throw ControlException(
           ControlErrorCode.unknownCommand,
           'Unknown command "$command".',
@@ -327,7 +320,7 @@ class _Connection {
       final args = rawArgs == null
           ? <String, Object?>{}
           : Map<String, Object?>.of(rawArgs as Map<String, Object?>);
-      final result = await _owner._dispatch(command, args);
+      final result = await handler(args);
       _owner._logger.debug('control: $command ok');
       await _respond(id, result: result);
     } on ControlException catch (e) {

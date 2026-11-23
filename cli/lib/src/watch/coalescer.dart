@@ -8,14 +8,11 @@ enum ReloadResult { done, busy }
 /// Trailing-edge debounce plus "one in flight, one follow-up" coalescing.
 class ReloadCoalescer {
   ReloadCoalescer({
-    required Duration debounce,
-    required Future<ReloadResult> Function() reload,
-    void Function(Object, StackTrace)? onError,
-    Clock clock = const SystemClock(),
-  }) : _debounce = debounce,
-       _reload = reload,
-       _onError = onError,
-       _clock = clock;
+    required this._debounce,
+    required this._reload,
+    this._onError,
+    this._clock = const SystemClock(),
+  });
 
   final Duration _debounce;
   final Future<ReloadResult> Function() _reload;

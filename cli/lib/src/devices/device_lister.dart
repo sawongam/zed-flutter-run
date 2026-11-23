@@ -14,17 +14,19 @@ class FlutterToolResult {
   final String stderr;
 }
 
-/// Runs `flutter <args>`. Throws [TimeoutException] when [timeout] elapses.
-typedef FlutterRunner =
-    Future<FlutterToolResult> Function(
-      List<String> flutterArgs, {
-      String? workingDirectory,
-      Duration? timeout,
-    });
+/// Runs `flutter <args>`. Throws [ToolTimeoutException] when [timeout]
+/// elapses.
+typedef FlutterRunner = Future<FlutterToolResult> Function(
+  List<String> flutterArgs, {
+  String? workingDirectory,
+  Duration? timeout,
+});
 
 /// Resolves the Flutter SDK and returns a [FlutterRunner] (wired by the CLI).
-typedef FlutterRunnerFactory =
-    Future<FlutterRunner> Function({String? projectDir, String? explicitSdk});
+typedef FlutterRunnerFactory = Future<FlutterRunner> Function({
+  String? projectDir,
+  String? explicitSdk,
+});
 
 /// How long `flutter devices` and `flutter emulators` may take.
 const Duration deviceListTimeout = Duration(seconds: 60);
@@ -63,7 +65,7 @@ Future<FlutterToolResult> runFlutterChecked(
       workingDirectory: workingDirectory,
       timeout: deviceListTimeout,
     );
-  } on TimeoutException {
+  } on ToolTimeoutException {
     throw ExternalToolException(timeoutMessage(args.first));
   }
   if (result.exitCode != 0 && !(acceptFailure?.call(result) ?? false)) {

@@ -19,3 +19,9 @@ First preview release.
 - `flutter_run init`, which writes `.zed/debug.json` and `.zed/tasks.json` and prints a keymap snippet.
 - Debug locator: Zed tasks that run `flutter run` or `dart run <file>.dart` can be started as debug sessions when `FlutterRun` is listed in `languages.Dart.debuggers`.
 - Log file for diagnosis (`logFile`, `FLUTTER_RUN_LOG`).
+
+### Changed
+
+- The proxy reads the process table less often once the adapter's process tree has stopped changing: every 20 seconds (30 on Windows) instead of every 2 (6 on Windows). A change in the session still takes a reading at once.
+- Reload on save hashes the files already in `lib/` on a background isolate, so a large project no longer delays the first debug messages.
+- The CLI needs Dart 3.13 or newer, as its dependencies already did.

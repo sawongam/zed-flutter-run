@@ -9,18 +9,16 @@ import '../../common/host_environment.dart';
 import '../device_lister.dart';
 import '../device_store.dart';
 import '../flutter_device.dart';
+import '../table.dart';
 
 /// `flutter_run devices [--json]`: lists devices and marks the saved one.
 class DevicesCommand extends Command<int> {
   DevicesCommand({
-    required FlutterRunnerFactory runnerFor,
-    required DeviceStore store,
-    required HostEnvironment env,
-    required Console console,
-  }) : _runnerFor = runnerFor,
-       _store = store,
-       _env = env,
-       _console = console {
+    required this._runnerFor,
+    required this._store,
+    required this._env,
+    required this._console,
+  }) {
     GlobalOptions.addTo(argParser);
     argParser.addFlag(
       'json',
@@ -70,18 +68,13 @@ class DevicesCommand extends Command<int> {
   }
 
   void _printTable(List<FlutterDevice> devices, String? savedId) {
-    int width(String Function(FlutterDevice) f, String header) => [
-      header.length,
-      ...devices.map((d) => f(d).length),
-    ].reduce((a, b) => a > b ? a : b);
-    final wName = width((d) => d.name, 'Name');
-    final wId = width((d) => d.id, 'Id');
-    String row(String mark, String n, String i, String p) =>
-        '$mark ${n.padRight(wName)}  ${i.padRight(wId)}  $p'.trimRight();
-
-    _console.out(row(' ', 'Name', 'Id', 'Platform'));
-    for (final d in devices) {
-      _console.out(row(d.id == savedId ? '*' : ' ', d.name, d.id, d.platform));
+    final lines = formatTable([
+      ['Name', 'Id', 'Platform'],
+      for (final d in devices) [d.name, d.id, d.platform],
+    ]);
+    final marks = [' ', for (final d in devices) d.id == savedId ? '*' : ' '];
+    for (var i = 0; i < lines.length; i++) {
+      _console.out('${marks[i]} ${lines[i]}');
     }
     if (savedId != null) {
       final connected = devices.any((d) => d.id == savedId);

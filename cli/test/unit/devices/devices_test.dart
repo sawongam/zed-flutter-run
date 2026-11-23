@@ -381,12 +381,7 @@ void main() {
           ),
         )
         ..addCommand(
-          EmulatorsCommand(
-            runnerFor: runnerFor,
-            store: store,
-            env: e,
-            console: c,
-          ),
+          EmulatorsCommand(runnerFor: runnerFor, env: e, console: c),
         );
       try {
         return (code: await runner.run(args) ?? 0, error: null, hint: null);
@@ -509,7 +504,7 @@ void main() {
       });
 
       test('timeout mentions the startup lock', () async {
-        responder = (_) => throw TimeoutException('slow');
+        responder = (_) => throw const ToolTimeoutException('slow');
         final r = await exec(['devices']);
         expect(r.code, 10);
         expect(r.error, contains('startup lock'));

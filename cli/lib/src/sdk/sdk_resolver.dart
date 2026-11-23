@@ -93,6 +93,12 @@ class SdkResolution {
   }
 }
 
+/// How to point flutter_run at an SDK when none was found.
+const String sdkSearchHint =
+    'Set flutterSdkPath in the launch entry (or pass --flutter-sdk), set the '
+    'FLUTTER_RUN_FLUTTER_SDK environment variable, or put flutter on your '
+    'PATH.';
+
 final RegExp _versionPattern = RegExp(r'^[A-Za-z0-9_@\-][A-Za-z0-9._@\-]*$');
 
 class SdkResolver {
@@ -157,17 +163,13 @@ class SdkResolver {
     if (explicitBad && kind == SdkKind.flutter) {
       headline =
           'The Flutter SDK folder you configured does not contain ${_ctx.join('bin', _flutterBin)}.';
-      hint =
-          'Fix the flutterSdkPath setting (or the --flutter-sdk option) so it points to the root of a Flutter SDK, or remove it to let flutter_run search.';
+      hint = 'Fix the flutterSdkPath setting (or the --flutter-sdk option) so it points to the root of a Flutter SDK, or remove it to let flutter_run search.';
     } else if (strictFvm) {
-      headline =
-          'No Flutter SDK was found through fvm for this project, and fvm is required (useFvm).';
-      hint =
-          'Run "fvm use" in the project so that .fvm/flutter_sdk exists, install the version listed in .fvmrc, or turn off useFvm.';
+      headline = 'No Flutter SDK was found through fvm for this project, and fvm is required (useFvm).';
+      hint = 'Run "fvm use" in the project so that .fvm/flutter_sdk exists, install the version listed in .fvmrc, or turn off useFvm.';
     } else {
       headline = 'Could not find a $what SDK.';
-      hint =
-          'Set flutterSdkPath in the launch entry (or pass --flutter-sdk), set the FLUTTER_RUN_FLUTTER_SDK environment variable, or put flutter on your PATH.';
+      hint = sdkSearchHint;
     }
     throw SdkNotFoundException(
       '$headline\nLocations that were tried:\n${result.describeTrace()}',
@@ -561,9 +563,7 @@ class SdkResolver {
           'bundled-dart',
           bundledDesc,
           StepOutcome.notFound,
-          flutter.root == null
-              ? 'the Flutter command is a launcher'
-              : 'bin/cache/dart-sdk is missing; run flutter once to download it',
+          flutter.root == null ? 'the Flutter command is a launcher' : 'bin/cache/dart-sdk is missing; run flutter once to download it',
         ),
       );
     } else {
@@ -639,16 +639,8 @@ class SdkResolver {
 
   // ---------------------------------------------------------------- helpers
 
-  String? _findUp(String startDir, String relative) {
-    var dir = _ctx.normalize(_ctx.absolute(startDir));
-    while (true) {
-      final candidate = _ctx.join(dir, relative);
-      if (_fs.exists(candidate)) return candidate;
-      final parent = _ctx.dirname(dir);
-      if (parent == dir) return null;
-      dir = parent;
-    }
-  }
+  String? _findUp(String startDir, String relative) =>
+      findUpwards(startDir, relative, env, exists: _fs.exists);
 
   static String? _jsonString(String? text, String key) {
     if (text == null) return null;

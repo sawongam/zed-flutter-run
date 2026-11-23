@@ -99,18 +99,16 @@ void main() {
     test('3 fvm-link with a relative target', () async {
       final sdk = sdkAt('fvm');
       Directory(p.join(project, '.fvm')).createSync();
-      Link(
-        p.join(project, '.fvm', 'flutter_sdk'),
-      ).createSync(p.relative(sdk, from: p.join(project, '.fvm')));
+      Link(p.join(project, '.fvm', 'flutter_sdk'))
+          .createSync(p.relative(sdk, from: p.join(project, '.fvm')));
       final r = await resolve(host());
       expect(r.flutter!.root, sdk);
     }, skip: Platform.isWindows ? 'needs symlink privileges' : null);
 
     test('3 broken fvm-link is invalid and resolution continues', () async {
       Directory(p.join(project, '.fvm')).createSync();
-      Link(
-        p.join(project, '.fvm', 'flutter_sdk'),
-      ).createSync(p.join(tmp.path, 'missing'));
+      Link(p.join(project, '.fvm', 'flutter_sdk'))
+          .createSync(p.join(tmp.path, 'missing'));
       final sdk = sdkAt('env');
       final r = await resolve(host({'FLUTTER_ROOT': sdk}));
       expect(outcomeOf(r, 'fvm-link'), StepOutcome.invalid);
@@ -176,9 +174,9 @@ void main() {
       final cache = p.join(tmp.path, 'cache');
       final viaCache = makeFakeSdk(p.join(cache, 'versions', '1.2.3'));
       expect(
-        (await resolve(
-          host({'FVM_HOME': fvmHome, 'FVM_CACHE_PATH': cache}),
-        )).flutter!.root,
+        (await resolve(host({'FVM_HOME': fvmHome, 'FVM_CACHE_PATH': cache})))
+            .flutter!
+            .root,
         viaCache,
         reason: 'FVM_CACHE_PATH has priority',
       );
@@ -234,9 +232,8 @@ void main() {
     test('8 PATH symlink is resolved to the SDK root', () async {
       final sdk = sdkAt('real');
       final links = Directory(p.join(tmp.path, 'links'))..createSync();
-      Link(
-        p.join(links.path, 'flutter'),
-      ).createSync(p.join(sdk, 'bin', 'flutter'));
+      Link(p.join(links.path, 'flutter'))
+          .createSync(p.join(sdk, 'bin', 'flutter'));
       final r = await resolve(host({'PATH': links.path}));
       expect(r.flutter!.root, sdk);
       expect(r.flutter!.flutterExecutable, p.join(sdk, 'bin', 'flutter'));
@@ -323,9 +320,8 @@ void main() {
       expect(r.flutter, isNull);
       expect(outcomeOf(r, 'explicit'), StepOutcome.invalid);
       await expectLater(
-        SdkResolver(
-          env,
-        ).resolveOrThrow(projectDir: project, explicitSdkPath: bad),
+        SdkResolver(env)
+            .resolveOrThrow(projectDir: project, explicitSdkPath: bad),
         throwsA(
           isA<SdkNotFoundException>().having(
             (e) => e.message,
@@ -457,9 +453,8 @@ void main() {
     test('nothing found -> error listing the dart steps too', () async {
       final env = host();
       try {
-        await SdkResolver(
-          env,
-        ).resolveOrThrow(projectDir: project, kind: SdkKind.dart);
+        await SdkResolver(env)
+            .resolveOrThrow(projectDir: project, kind: SdkKind.dart);
         fail('should throw');
       } on SdkNotFoundException catch (e) {
         expect(e.message, contains('Dart'));
@@ -526,9 +521,8 @@ void main() {
     final env = HostEnvironment.system();
     final onPath = findExecutableOnPath('flutter', env);
     test('resolves the flutter found on PATH', () async {
-      final r = await SdkResolver(
-        env,
-      ).resolveOrThrow(projectDir: Directory.systemTemp.path);
+      final r = await SdkResolver(env)
+          .resolveOrThrow(projectDir: Directory.systemTemp.path);
       final sdk = r.flutter!;
       final real = File(onPath!).resolveSymbolicLinksSync();
       expect(sdk.sourceStep, anyOf('path', 'flutter-root', 'env'));

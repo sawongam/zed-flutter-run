@@ -4,6 +4,7 @@ import 'package:flutter_run/src/common/errors.dart';
 import 'package:flutter_run/src/common/host_environment.dart';
 import 'package:flutter_run/src/devtools/browser_opener.dart';
 import 'package:flutter_run/src/devtools/commands/devtools_command.dart';
+import 'package:flutter_run/src/devtools/vm_service_target_resolver.dart';
 import 'package:test/test.dart';
 
 class _Opener implements BrowserOpener {

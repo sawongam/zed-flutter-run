@@ -23,11 +23,9 @@ void main() {
       const UsageError('x'): 2,
       const NoSessionException('x'): 3,
       const SessionRequestException('x'): 4,
-      const RequestTimeoutException('x'): 5,
       const SdkNotFoundException('x'): 6,
       const DeviceException('x'): 7,
       const ProjectNotFoundException('x'): 8,
-      const ManualActionRequired('x'): 9,
       const ExternalToolException('x'): 10,
     };
     cases.forEach((e, code) => expect(e.exitCode, code, reason: '$e'));

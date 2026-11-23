@@ -1,5 +1,28 @@
 import '../common/errors.dart';
-import 'commands/devtools_command.dart';
+
+/// The running app a DevTools page is opened for.
+class VmServiceTarget {
+  const VmServiceTarget({
+    required this.vmServiceUri,
+    this.deviceId,
+    required this.sessionPid,
+    this.kind,
+  });
+
+  final String vmServiceUri;
+  final String? deviceId;
+  final int sessionPid;
+
+  /// Session kind (`flutter` or `dart`); null when unknown.
+  final String? kind;
+}
+
+/// Finds the session for [directory] (most recent `startedAt` with a
+/// `vmServiceUri`). Throws [NoSessionException] (exit 3) or
+/// [SessionRequestException] (exit 4, app still starting).
+typedef VmServiceTargetResolver = Future<VmServiceTarget> Function({
+  required String directory,
+});
 
 /// A running debug session as DevTools needs to know it (supplied by the CLI).
 class RunningSession {

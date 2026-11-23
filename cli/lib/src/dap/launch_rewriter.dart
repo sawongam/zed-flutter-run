@@ -38,11 +38,10 @@ class LaunchRewriter {
     required this.kind,
     required this.cwd,
     required this.environment,
-    required String? Function() savedDevice,
+    required this._savedDevice,
     Logger? logger,
     bool Function(String id)? isSafeDeviceId,
   }) : _isSafeDeviceId = isSafeDeviceId ?? ((_) => true),
-       _savedDevice = savedDevice,
        _logger = logger ?? Logger.silent();
 
   final DapKind kind;

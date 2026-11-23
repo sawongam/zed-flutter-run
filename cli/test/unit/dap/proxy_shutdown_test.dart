@@ -24,39 +24,36 @@ void main() {
       return h;
     }
 
-    test(
-      'forwards terminate after onShutdownStarted, holds the response until terminated, cleans up first',
-      () {
-        fakeAsync((fa) {
-          final h = started(fa);
-          h.request(10, 'terminate');
-          fa.flushMicrotasks();
-          expect(h.order, ['hook:started', 'adapter:terminate']);
-          expect(h.adapter.received.last['seq'], 10);
-          expect(h.adapter.snapshotCalls, 1);
+    test('forwards terminate after onShutdownStarted, holds the response until terminated, cleans up first', () {
+      fakeAsync((fa) {
+        final h = started(fa);
+        h.request(10, 'terminate');
+        fa.flushMicrotasks();
+        expect(h.order, ['hook:started', 'adapter:terminate']);
+        expect(h.adapter.received.last['seq'], 10);
+        expect(h.adapter.snapshotCalls, 1);
 
-          h.adapter.respond(h.adapter.lastRequest('terminate'));
-          fa.elapse(const Duration(seconds: 2));
-          expect(h.client.sentWhere('response', 'terminate'), isEmpty);
+        h.adapter.respond(h.adapter.lastRequest('terminate'));
+        fa.elapse(const Duration(seconds: 2));
+        expect(h.client.sentWhere('response', 'terminate'), isEmpty);
 
-          h.adapter.event('terminated');
-          fa.elapse(const Duration(seconds: 1));
-          fa.flushMicrotasks();
-          expect(h.order, [
-            'hook:started',
-            'adapter:terminate',
-            'client:output', // "Stopping the app..." after 1 s
-            'client:terminated',
-            'hook:cleanup',
-            'client:terminate',
-          ]);
-          final response = h.client.sentWhere('response', 'terminate').single;
-          expect(response['request_seq'], 10);
-          expect(response['success'], isTrue);
-          expect(h.exitCode, isNull);
-        });
-      },
-    );
+        h.adapter.event('terminated');
+        fa.elapse(const Duration(seconds: 1));
+        fa.flushMicrotasks();
+        expect(h.order, [
+          'hook:started',
+          'adapter:terminate',
+          'client:output', // "Stopping the app..." after 1 s
+          'client:terminated',
+          'hook:cleanup',
+          'client:terminate',
+        ]);
+        final response = h.client.sentWhere('response', 'terminate').single;
+        expect(response['request_seq'], 10);
+        expect(response['success'], isTrue);
+        expect(h.exitCode, isNull);
+      });
+    });
 
     test(
       'the response is relayed after 5 s even if terminated never comes',
@@ -226,42 +223,39 @@ void main() {
       return h;
     }
 
-    test(
-      'launch: injects terminate, waits for its response, then forwards disconnect',
-      () {
-        fakeAsync((fa) {
-          final h = launched(fa, 'launch');
-          h.request(20, 'disconnect');
-          fa.flushMicrotasks();
-          expect(h.order, ['hook:started', 'adapter:terminate']);
-          final injectedTerminate = h.adapter.lastRequest('terminate');
-          expect(injectedTerminate['seq'], greaterThanOrEqualTo(injectedBase));
-          expect(h.adapter.receivedRequest('disconnect'), isFalse);
+    test('launch: injects terminate, waits for its response, then forwards disconnect', () {
+      fakeAsync((fa) {
+        final h = launched(fa, 'launch');
+        h.request(20, 'disconnect');
+        fa.flushMicrotasks();
+        expect(h.order, ['hook:started', 'adapter:terminate']);
+        final injectedTerminate = h.adapter.lastRequest('terminate');
+        expect(injectedTerminate['seq'], greaterThanOrEqualTo(injectedBase));
+        expect(h.adapter.receivedRequest('disconnect'), isFalse);
 
-          h.adapter.respond(injectedTerminate);
-          fa.flushMicrotasks();
-          expect(h.adapter.lastRequest('disconnect')['seq'], 20);
+        h.adapter.respond(injectedTerminate);
+        fa.flushMicrotasks();
+        expect(h.adapter.lastRequest('disconnect')['seq'], 20);
 
-          h.adapter.respond(h.adapter.lastRequest('disconnect'));
-          fa.flushMicrotasks();
-          expect(h.client.sentWhere('response', 'disconnect'), isEmpty);
-          h.adapter.die(0);
-          fa.elapse(const Duration(seconds: 3));
-          expect(h.client.sentWhere('response'), hasLength(1));
-          expect(
-            h.client.sentWhere('response', 'disconnect').single['request_seq'],
-            20,
-          );
-          // The injected terminate response was swallowed.
-          expect(h.client.sentWhere('response', 'terminate'), isEmpty);
-          expect(
-            h.order.indexOf('hook:cleanup'),
-            lessThan(h.order.indexOf('client:disconnect')),
-          );
-          expect(h.exitCode, 0);
-        });
-      },
-    );
+        h.adapter.respond(h.adapter.lastRequest('disconnect'));
+        fa.flushMicrotasks();
+        expect(h.client.sentWhere('response', 'disconnect'), isEmpty);
+        h.adapter.die(0);
+        fa.elapse(const Duration(seconds: 3));
+        expect(h.client.sentWhere('response'), hasLength(1));
+        expect(
+          h.client.sentWhere('response', 'disconnect').single['request_seq'],
+          20,
+        );
+        // The injected terminate response was swallowed.
+        expect(h.client.sentWhere('response', 'terminate'), isEmpty);
+        expect(
+          h.order.indexOf('hook:cleanup'),
+          lessThan(h.order.indexOf('client:disconnect')),
+        );
+        expect(h.exitCode, 0);
+      });
+    });
 
     test('launch: a terminated event also releases the wait', () {
       fakeAsync((fa) {
@@ -343,23 +337,20 @@ void main() {
       },
     );
 
-    test(
-      'an answered disconnect is released after a short grace even if the adapter lingers',
-      () {
-        fakeAsync((fa) {
-          final h = launched(fa, 'attach');
-          h.request(20, 'disconnect');
-          fa.flushMicrotasks();
-          h.adapter.respond(h.adapter.lastRequest('disconnect'));
-          fa.elapse(const Duration(milliseconds: 400));
-          expect(h.client.sentWhere('response', 'disconnect'), isEmpty);
-          fa.elapse(const Duration(seconds: 2));
-          expect(h.client.sentWhere('response', 'disconnect'), hasLength(1));
-          expect(h.adapter.terminateTreeCalls, isNotEmpty);
-          expect(h.exitCode, 0);
-        });
-      },
-    );
+    test('an answered disconnect is released after a short grace even if the adapter lingers', () {
+      fakeAsync((fa) {
+        final h = launched(fa, 'attach');
+        h.request(20, 'disconnect');
+        fa.flushMicrotasks();
+        h.adapter.respond(h.adapter.lastRequest('disconnect'));
+        fa.elapse(const Duration(milliseconds: 400));
+        expect(h.client.sentWhere('response', 'disconnect'), isEmpty);
+        fa.elapse(const Duration(seconds: 2));
+        expect(h.client.sentWhere('response', 'disconnect'), hasLength(1));
+        expect(h.adapter.terminateTreeCalls, isNotEmpty);
+        expect(h.exitCode, 0);
+      });
+    });
   });
 
   group('EOF and shutdown', () {

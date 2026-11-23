@@ -25,11 +25,10 @@ import 'signal_source.dart';
 import 'wiring.dart';
 
 /// Starts the control server for a session.
-typedef ControlServerStarter =
-    Future<ControlEndpoint> Function({
-      required SessionControl control,
-      Logger? logger,
-    });
+typedef ControlServerStarter = Future<ControlEndpoint> Function({
+  required SessionControl control,
+  Logger? logger,
+});
 
 /// One running debug session: the proxy plus everything around it (control
 /// server, session file, reload on save, DevTools, signals).
@@ -98,13 +97,16 @@ class DapSessionHost {
   SessionHandle? _handle;
   SessionInfo? _info;
   ReloadOnSaveWatcher? _watcher;
-  Future<void>? _watcherStart;
   StreamSubscription<ProxyEvent>? _events;
   Timer? _writeTimer;
   Timer? _watchdog;
   Json _ownConfig = const <String, Object?>{};
   bool _startNoticesShown = false;
-  bool _ending = false;
+  Future<void>? _shutdownStarted;
+  Future<void>? _shutdownCleanup;
+
+  /// The session is ending: no more session writes, watchers or notices.
+  bool get _ending => _shutdownStarted != null;
   String? _setupProblem;
 
   bool _proxyReady = false;
@@ -165,6 +167,9 @@ class DapSessionHost {
         snapshotInterval: env.isWindows
             ? const Duration(seconds: 6)
             : const Duration(seconds: 2),
+        stableSnapshotInterval: env.isWindows
+            ? const Duration(seconds: 30)
+            : const Duration(seconds: 20),
       ),
       rewriter: LaunchRewriter(
         isSafeDeviceId: safeIdPattern.hasMatch,
@@ -188,8 +193,8 @@ class DapSessionHost {
 
     final code = await proxy.run();
 
-    await _controlReady;
-    await _onShutdownStarted();
+    // The proxy ran both hooks, but bounded by a timeout; wait for them here
+    // so nothing (a control server that started late, say) is left open.
     await _onShutdownCleanup();
     // Not awaited: cancelling a plain in-process subscription does no I/O.
     unawaited(_events?.cancel());
@@ -228,9 +233,13 @@ class DapSessionHost {
     }
   }
 
-  Future<void> _onShutdownStarted() async {
-    if (_ending) return;
-    _ending = true;
+  /// Runs once; later calls wait for the first.
+  Future<void> _onShutdownStarted() => _shutdownStarted ??= _stopSessionWork();
+
+  /// Runs once, after [_onShutdownStarted]; later calls wait for the first.
+  Future<void> _onShutdownCleanup() => _shutdownCleanup ??= _releaseResources();
+
+  Future<void> _stopSessionWork() async {
     control.markEnding();
     final watcher = _watcher;
     _watcher = null;
@@ -248,21 +257,10 @@ class DapSessionHost {
     }
   }
 
-  Future<void> _onShutdownCleanup() async {
-    final start = _watcherStart;
-    if (start != null) {
-      try {
-        await start;
-      } on Object catch (_) {
-        // Already logged by the starter.
-      }
-    }
-    try {
-      await _watcher?.stop();
-    } on Object catch (e) {
-      logger.warn('Could not stop the file watcher: $e');
-    }
-    _watcher = null;
+  Future<void> _releaseResources() async {
+    await _onShutdownStarted();
+    // A control server that is still starting must be closed once it is up.
+    await _controlReady;
     try {
       await _server?.close();
     } on Object catch (e) {
@@ -283,8 +281,7 @@ class DapSessionHost {
         _watchdog?.cancel();
         _writeTimer?.cancel();
         unawaited(_writeSession());
-        _watcherStart = _armWatcher();
-        unawaited(_watcherStart);
+        unawaited(_armWatcher());
       case SessionEnded():
         _watchdog?.cancel();
     }

@@ -20,14 +20,11 @@ class DoctorCommand extends Command<int> {
   DoctorCommand({
     required SdkResolver sdkResolver,
     required SessionStore sessionStore,
-    required HostEnvironment env,
-    required Console console,
-    String? resolvedExecutable,
+    required this._env,
+    required this._console,
+    this._resolvedExecutable,
   }) : _sdk = sdkResolver,
-       _sessions = sessionStore,
-       _env = env,
-       _console = console,
-       _resolvedExecutable = resolvedExecutable {
+       _sessions = sessionStore {
     GlobalOptions.addTo(argParser);
   }
 
@@ -133,11 +130,7 @@ class DoctorCommand extends Command<int> {
     if (!found) {
       _console
         ..out('')
-        ..out(
-          'No SDK was found. Set flutterSdkPath in the launch entry (or pass '
-          '--flutter-sdk), set the FLUTTER_RUN_FLUTTER_SDK environment '
-          'variable, or put flutter on your PATH.',
-        );
+        ..out('No SDK was found. $sdkSearchHint');
     }
     return found;
   }

@@ -18,21 +18,17 @@ import '../templates.dart';
 /// prints the keymap snippet, the key table and the PATH check.
 class InitCommand extends Command<int> {
   InitCommand({
-    required HostEnvironment env,
-    required Console console,
+    required this._env,
+    required this._console,
     required String? Function() findFlutterRunOnPath,
-    required String pathFixHint,
-  }) : _env = env,
-       _console = console,
-       _findOnPath = findFlutterRunOnPath,
-       _pathFixHint = pathFixHint {
+    required this._pathFixHint,
+  }) : _findOnPath = findFlutterRunOnPath {
     GlobalOptions.addTo(argParser);
     argParser
       ..addFlag(
         'force',
         negatable: false,
-        help:
-            'Replace .zed files that cannot be edited safely (a .bak copy is kept).',
+        help: 'Replace .zed files that cannot be edited safely (a .bak copy is kept).',
       )
       ..addFlag(
         'dry-run',

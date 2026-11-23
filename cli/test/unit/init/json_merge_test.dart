@@ -76,9 +76,10 @@ void main() {
   });
 
   test('UTF-8 BOM is stripped before parsing', () {
-    final r =
-        mergeLabeledArray('\uFEFF[{"label":"a"}]', [e('a'), e('b')])
-            as MergeUpdated;
+    final r = mergeLabeledArray('\uFEFF[{"label":"a"}]', [
+      e('a'),
+      e('b'),
+    ]) as MergeUpdated;
     expect(r.added, 1);
     expect(r.kept, 1);
     expect(r.content.startsWith('\uFEFF'), isFalse);

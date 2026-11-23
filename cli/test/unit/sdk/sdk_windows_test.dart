@@ -106,39 +106,36 @@ void main() {
     expect(r.flutter!.sourceStep, 'flutter-root');
   });
 
-  test(
-    'fvm cache: FVM_CACHE_PATH, FVM_HOME, %USERPROFILE%\\fvm, %LOCALAPPDATA%\\fvm',
-    () async {
-      fs.text[r'C:\proj\.fvmrc'] = jsonEncode({'flutter': '3.24.0'});
-      fs.dirs.add(r'C:\proj');
-      fs.files.add(r'C:\proj\.fvmrc');
-      final resolver = SdkResolver(
-        win({
-          'FVM_CACHE_PATH': r'D:\cache',
-          'FVM_HOME': r'D:\fvmhome',
-          'LOCALAPPDATA': r'C:\Users\Me\AppData\Local',
-        }),
-        fileSystem: fs,
-      );
-      expect(resolver.fvmCacheCandidates('3.24.0'), [
-        r'D:\cache\versions\3.24.0',
-        r'D:\fvmhome\versions\3.24.0',
-        r'C:\Users\Me\fvm\versions\3.24.0',
-        r'C:\Users\Me\AppData\Local\fvm\versions\3.24.0',
-      ]);
+  test('fvm cache: FVM_CACHE_PATH, FVM_HOME, %USERPROFILE%\\fvm, %LOCALAPPDATA%\\fvm', () async {
+    fs.text[r'C:\proj\.fvmrc'] = jsonEncode({'flutter': '3.24.0'});
+    fs.dirs.add(r'C:\proj');
+    fs.files.add(r'C:\proj\.fvmrc');
+    final resolver = SdkResolver(
+      win({
+        'FVM_CACHE_PATH': r'D:\cache',
+        'FVM_HOME': r'D:\fvmhome',
+        'LOCALAPPDATA': r'C:\Users\Me\AppData\Local',
+      }),
+      fileSystem: fs,
+    );
+    expect(resolver.fvmCacheCandidates('3.24.0'), [
+      r'D:\cache\versions\3.24.0',
+      r'D:\fvmhome\versions\3.24.0',
+      r'C:\Users\Me\fvm\versions\3.24.0',
+      r'C:\Users\Me\AppData\Local\fvm\versions\3.24.0',
+    ]);
 
-      fs.addSdk(r'C:\Users\Me\AppData\Local\fvm\versions\3.24.0');
-      final r = await SdkResolver(
-        win({'LOCALAPPDATA': r'C:\Users\Me\AppData\Local'}),
-        fileSystem: fs,
-      ).resolve(projectDir: r'C:\proj\app');
-      expect(r.flutter!.sourceStep, 'fvm-cache');
-      expect(
-        r.flutter!.flutterExecutable,
-        r'C:\Users\Me\AppData\Local\fvm\versions\3.24.0\bin\flutter.bat',
-      );
-    },
-  );
+    fs.addSdk(r'C:\Users\Me\AppData\Local\fvm\versions\3.24.0');
+    final r = await SdkResolver(
+      win({'LOCALAPPDATA': r'C:\Users\Me\AppData\Local'}),
+      fileSystem: fs,
+    ).resolve(projectDir: r'C:\proj\app');
+    expect(r.flutter!.sourceStep, 'fvm-cache');
+    expect(
+      r.flutter!.flutterExecutable,
+      r'C:\Users\Me\AppData\Local\fvm\versions\3.24.0\bin\flutter.bat',
+    );
+  });
 
   test('fvm junction from an ancestor', () async {
     fs.addSdk(r'C:\Users\Me\fvm\versions\3.24.0');

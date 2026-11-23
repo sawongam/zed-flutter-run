@@ -6,7 +6,7 @@ Command-line tool and Debug Adapter Protocol (DAP) proxy for **Flutter Run & Deb
 
 ## Install
 
-Until it is on pub.dev, install from Git (needs the Dart SDK 3.8 or newer):
+Until it is on pub.dev, install from Git (needs the Dart SDK 3.13 or newer):
 
 ```sh
 dart pub global activate --source git https://github.com/sawongam/zed-flutter-run --git-path cli

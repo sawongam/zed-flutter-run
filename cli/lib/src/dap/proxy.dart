@@ -29,18 +29,16 @@ export 'proxy_options.dart';
 /// real stop path and lives in [ShutdownCoordinator].
 class DapProxy implements RequestInjector {
   DapProxy({
-    required DapChannel client,
+    required this._client,
     required AdapterConnection adapter,
     required ProxyOptions options,
-    required LaunchRewriter rewriter,
+    required this._rewriter,
     Future<void> Function()? onShutdownStarted,
     Future<void> Function()? onShutdownCleanup,
     Logger? logger,
     Clock clock = const SystemClock(),
-  }) : _client = client,
-       _adapter = adapter,
+  }) : _adapter = adapter,
        _options = options,
-       _rewriter = rewriter,
        _clock = clock,
        _log = logger ?? Logger.silent() {
     _phase = SessionPhaseMachine(logger: _log);

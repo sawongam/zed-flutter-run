@@ -139,9 +139,10 @@ void main() {
         isFalse,
       );
       expect(
-        rewriter(
-          kind: DapKind.dart,
-        ).rewrite('launch', {}).arguments.containsKey('program'),
+        rewriter(kind: DapKind.dart)
+            .rewrite('launch', {})
+            .arguments
+            .containsKey('program'),
         isFalse,
       );
       expect(
@@ -295,9 +296,8 @@ void main() {
     }
 
     test('mode flag comes before the device flag', () {
-      final r = rewriter(
-        saved: 's',
-      ).rewrite('launch', {'flutterMode': 'profile'});
+      final r = rewriter(saved: 's')
+          .rewrite('launch', {'flutterMode': 'profile'});
       expect(r.arguments['toolArgs'], ['--profile', '-d', 's']);
     });
 

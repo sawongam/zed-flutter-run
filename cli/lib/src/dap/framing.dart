@@ -105,6 +105,8 @@ class DapFrameDecoder {
     return -1;
   }
 
+  static final RegExp _contentLengthPattern = RegExp(r'^\d{1,10}$');
+
   static int _parseContentLength(String header) {
     for (final line in header.split('\r\n')) {
       final colon = line.indexOf(':');
@@ -113,7 +115,7 @@ class DapFrameDecoder {
         continue;
       }
       final value = line.substring(colon + 1).trim();
-      if (!RegExp(r'^\d{1,10}$').hasMatch(value)) {
+      if (!_contentLengthPattern.hasMatch(value)) {
         throw DapFramingException('Invalid Content-Length "$value".');
       }
       final length = int.parse(value);

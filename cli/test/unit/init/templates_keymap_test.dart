@@ -218,9 +218,9 @@ void main() {
       });
 
       test('keepZedRestartKey omits the restart binding on $os', () {
-        final decoded =
-            jsonDecode(keymapSnippet(os, keepZedRestartKey: true))
-                as List<Object?>;
+        final decoded = jsonDecode(
+          keymapSnippet(os, keepZedRestartKey: true),
+        ) as List<Object?>;
         final bindings =
             ((decoded.single! as Map<String, Object?>)['bindings'])!
                 as Map<String, Object?>;

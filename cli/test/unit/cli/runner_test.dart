@@ -125,9 +125,7 @@ void main() {
       SdkNotFoundException('x'): 6,
       DeviceException('x'): 7,
       ProjectNotFoundException('x'): 8,
-      ManualActionRequired('x'): 9,
       ExternalToolException('x'): 10,
-      RequestTimeoutException('x'): 5,
       SessionRequestException('x'): 4,
     };
     for (final entry in errors.entries) {

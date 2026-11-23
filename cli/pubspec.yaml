@@ -4,7 +4,7 @@ version: 0.1.0
 repository: https://github.com/sawongam/zed-flutter-run
 issue_tracker: https://github.com/sawongam/zed-flutter-run/issues
 environment:
-  sdk: ^3.8.0
+  sdk: ^3.13.0
 executables:
   flutter_run:
 dependencies:

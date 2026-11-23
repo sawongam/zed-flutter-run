@@ -7,16 +7,13 @@ import '../common/clock.dart';
 /// message.
 class InitializeWatchdog {
   InitializeWatchdog({
-    required Clock clock,
+    required this._clock,
     required this.timeout,
     required this.noticeAfter,
-    required bool Function() isEnded,
-    required void Function() onSlow,
-    required void Function(String reason) onTimeout,
-  }) : _clock = clock,
-       _isEnded = isEnded,
-       _onSlow = onSlow,
-       _onTimeout = onTimeout;
+    required this._isEnded,
+    required this._onSlow,
+    required this._onTimeout,
+  });
 
   final Clock _clock;
   final Duration timeout;

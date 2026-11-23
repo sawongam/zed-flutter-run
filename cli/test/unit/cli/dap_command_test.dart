@@ -202,9 +202,8 @@ void main() {
         output: client.output,
         startupResponseWait: const Duration(seconds: 5),
       );
-      final exit = runnerWith(
-        command,
-      ).run(['dap', '--cwd', '${t.dir.path}/app']);
+      final exit = runnerWith(command)
+          .run(['dap', '--cwd', '${t.dir.path}/app']);
       final seq = client.send('initialize', {'adapterID': 'FlutterRun'});
       final response = await client.response(seq);
       expect(response['success'], isFalse);
@@ -249,9 +248,8 @@ void main() {
           output: client.output,
           startupResponseWait: const Duration(milliseconds: 100),
         );
-        final exit = await runnerWith(
-          command,
-        ).run(['dap', '--cwd', '${t.dir.path}/app']);
+        final exit = await runnerWith(command)
+            .run(['dap', '--cwd', '${t.dir.path}/app']);
         expect(exit, ExitCodes.sdkNotFound);
         expect(client.messages.where((m) => m['type'] == 'response'), isEmpty);
         await client.output_('Could not find a Flutter SDK');
@@ -261,9 +259,8 @@ void main() {
     test(
       'a spawn failure answers with exit 1',
       () async {
-        File(
-          '$sdk/bin/flutter',
-        ).writeAsStringSync('#!/nonexistent/interpreter\n');
+        File('$sdk/bin/flutter')
+            .writeAsStringSync('#!/nonexistent/interpreter\n');
         final exit = runDap([]);
         client.send('initialize');
         final out = await client.output_('Could not start');
@@ -317,9 +314,8 @@ void main() {
           sessionWriteDebounce: const Duration(milliseconds: 10),
           signalSource: signals,
         );
-        final exit = runnerWith(
-          command,
-        ).run(['dap', '--cwd', '${t.dir.path}/app', '--flutter-sdk', sdk]);
+        final exit = runnerWith(command)
+            .run(['dap', '--cwd', '${t.dir.path}/app', '--flutter-sdk', sdk]);
         client.send('initialize');
         client.send('launch', {'cwd': '${t.dir.path}/app', 'noDebug': true});
         await waitForSession((s) => s['appStarted'] == true);

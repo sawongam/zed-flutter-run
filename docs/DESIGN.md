@@ -44,6 +44,8 @@ So the proxy holds the `terminate` response until the adapter has answered and c
 
 On a normal stop the proxy ends the adapter and the processes that are its descendants at that moment. It does not touch processes it saw earlier that have since left the tree, such as a Gradle daemon started by an Android build.
 
+To know the earlier descendants, the proxy reads the process table while the adapter runs. That reading costs a `ps` (or PowerShell on Windows) each time and only matters after a crash, so it slows down once the tree has stopped changing and relies on the session's own events to read again when processes are likely to appear.
+
 Only after the adapter crashes does it also end earlier descendants that were orphaned, and it checks each process's start time first so that a reused process ID is never mistaken for one of ours. It never ends `adb`, Gradle or Kotlin daemons: killing `adb` would disconnect every device on the machine.
 
 If the proxy itself is killed with `SIGKILL` it cannot clean up. This is a known limitation.

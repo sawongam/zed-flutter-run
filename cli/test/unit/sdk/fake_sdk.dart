@@ -26,9 +26,8 @@ String makeFakeSdk(
       p.join(dartDir.path, Platform.isWindows ? 'dart.exe' : 'dart'),
     )..writeAsStringSync('x');
     if (!Platform.isWindows) Process.runSync('chmod', ['+x', dart.path]);
-    File(
-      p.join(root, 'bin', 'cache', 'dart-sdk', 'version'),
-    ).writeAsStringSync('$dartVersion\n');
+    File(p.join(root, 'bin', 'cache', 'dart-sdk', 'version'))
+        .writeAsStringSync('$dartVersion\n');
   }
   return root;
 }

@@ -13,16 +13,12 @@ import '../picker.dart';
 /// `flutter_run select-device [--device <id>] [--clear]`.
 class SelectDeviceCommand extends Command<int> {
   SelectDeviceCommand({
-    required FlutterRunnerFactory runnerFor,
-    required DeviceStore store,
-    required HostEnvironment env,
-    required Console console,
-    Clock clock = const SystemClock(),
-  }) : _runnerFor = runnerFor,
-       _store = store,
-       _env = env,
-       _console = console,
-       _clock = clock {
+    required this._runnerFor,
+    required this._store,
+    required this._env,
+    required this._console,
+    this._clock = const SystemClock(),
+  }) {
     GlobalOptions.addTo(argParser);
     argParser
       ..addOption(

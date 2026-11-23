@@ -105,6 +105,44 @@ void main() {
         expect(table.byPid, isEmpty); // neither tool exists here
       }
     });
+
+    test('POSIX runs ps in the C locale through the injected runner', () async {
+      final env = HostEnvironment(
+        os: HostOs.macos,
+        environment: const {},
+        currentDirectory: '/',
+      );
+      final calls = <(String, List<String>, Map<String, String>?)>[];
+      final table = await readProcessTable(
+        env,
+        runProcess: (exe, args, {environment}) async {
+          calls.add((exe, args, environment));
+          return ProcessResult(0, 0, _psGolden, '');
+        },
+      );
+      expect(calls.single.$1, 'ps');
+      expect(calls.single.$3, containsPair('LC_ALL', 'C'));
+      expect(table.byPid[101]!.ppid, 100);
+    });
+
+    test('Windows falls back from PowerShell to wmic', () async {
+      final env = HostEnvironment(
+        os: HostOs.windows,
+        environment: const {},
+        currentDirectory: r'C:\',
+      );
+      final tried = <String>[];
+      final table = await readProcessTable(
+        env,
+        runProcess: (exe, args, {environment}) async {
+          tried.add(exe);
+          if (exe == 'powershell') throw const ProcessException('x', []);
+          return ProcessResult(0, 1, '', '');
+        },
+      );
+      expect(tried, ['powershell', 'wmic']);
+      expect(table.byPid, isEmpty);
+    });
   });
 
   group('killTree with a fake process table (PID-reuse guard)', () {
@@ -297,7 +335,7 @@ void main() {
           {5678},
           env,
           readTable: () async => const ProcessTable.empty(),
-          runProcess: (exe, args) async {
+          runProcess: (exe, args, {environment}) async {
             expect(exe, 'taskkill');
             calls.add(args);
             return ProcessResult(0, 0, '', '');
@@ -330,7 +368,7 @@ void main() {
         env,
         startTimes: const {600: '100', 700: '50'},
         readTable: () async => table,
-        runProcess: (exe, args) async {
+        runProcess: (exe, args, {environment}) async {
           calls.add(args);
           if (args[1] == '600') {
             table = parseWindowsProcessCsv(
@@ -356,7 +394,7 @@ void main() {
         const {},
         env,
         readTable: () async => alive ? table : const ProcessTable.empty(),
-        runProcess: (exe, args) async {
+        runProcess: (exe, args, {environment}) async {
           calls.add(args);
           alive = false;
           return ProcessResult(0, 0, '', '');

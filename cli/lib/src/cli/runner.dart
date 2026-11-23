@@ -8,7 +8,7 @@ import 'package:meta/meta.dart';
 import '../common/errors.dart';
 import '../common/global_options.dart';
 import '../common/version.dart';
-import 'command_context.dart';
+import 'commands.dart';
 import 'dap_command.dart';
 import 'wiring.dart';
 
@@ -46,7 +46,7 @@ class FlutterRunRunner extends CommandRunner<int> {
       help: 'Print the flutter_run version.',
     );
     addCommand(DapCommand(wiring));
-    CommandContext(wiring).commands().forEach(addCommand);
+    buildCommands(wiring).forEach(addCommand);
   }
 
   final Wiring wiring;

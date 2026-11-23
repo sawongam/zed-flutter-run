@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'clock.dart';
+import 'files.dart';
 import 'host_environment.dart';
 
 enum LogLevel { error, warn, info, debug, trace }
@@ -12,14 +14,12 @@ enum LogLevel { error, warn, info, debug, trace }
 /// is `trace`), plus DAP traffic from [dap].
 class Logger {
   Logger({
-    LogLevel level = LogLevel.info,
+    this._level = LogLevel.info,
     IOSink? stderrSink,
     String? logFilePath,
-    DateTime Function()? clock,
+    this._clock = const SystemClock(),
     HostEnvironment? env,
-  }) : _level = level,
-       _clock = clock ?? DateTime.now,
-       _stderr = stderrSink ?? stderr {
+  }) : _stderr = stderrSink ?? stderr {
     if (logFilePath != null && logFilePath.isNotEmpty) {
       final problem = _openLogFile(
         logFilePath,
@@ -36,12 +36,12 @@ class Logger {
     }
   }
 
-  Logger._base(this._level) : _clock = DateTime.now;
+  Logger._base(this._level) : _clock = const SystemClock();
 
   factory Logger.silent() = _SilentLogger;
 
   final LogLevel _level;
-  final DateTime Function() _clock;
+  final Clock _clock;
   IOSink? _stderr;
   IOSink? _file;
 
@@ -63,17 +63,12 @@ class Logger {
         return 'it is not a regular file.';
       }
       if (type == FileSystemEntityType.notFound) file.createSync();
-      if (!env.isWindows) {
-        final r = Process.runSync('/bin/chmod', ['600', path]);
-        if (r.exitCode != 0) {
-          return 'it could not be restricted to your user.';
-        }
+      if (!env.isWindows && !restrictToOwner(path, 0x180)) {
+        return 'it could not be restricted to your user.';
       }
       _file = file.openWrite(mode: FileMode.append);
       return null;
     } on FileSystemException catch (e) {
-      return '${e.message}.';
-    } on ProcessException catch (e) {
       return '${e.message}.';
     }
   }
@@ -141,7 +136,7 @@ class Logger {
   }
 
   String _format(LogLevel at, String message) {
-    final t = _clock();
+    final t = _clock.now();
     String two(int n) => n.toString().padLeft(2, '0');
     final ms = t.millisecond.toString().padLeft(3, '0');
     final stamp = '${two(t.hour)}:${two(t.minute)}:${two(t.second)}.$ms';

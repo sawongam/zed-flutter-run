@@ -75,8 +75,11 @@ bool _isRefused(Object e) {
   return code == 111 || code == 61 || code == 10061 || code == 1225;
 }
 
-typedef SocketConnector =
-    Future<Socket> Function(String host, int port, Duration timeout);
+typedef SocketConnector = Future<Socket> Function(
+  String host,
+  int port,
+  Duration timeout,
+);
 
 Future<Socket> _defaultConnector(String host, int port, Duration timeout) =>
     Socket.connect(host, port, timeout: timeout);

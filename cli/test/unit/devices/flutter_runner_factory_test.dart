@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_run/src/common/errors.dart';
 import 'package:flutter_run/src/devices/device_lister.dart';
 import 'package:flutter_run/src/devices/flutter_runner_factory.dart';
@@ -34,14 +32,6 @@ void main() {
     expect(seen, ['/cwd|null']);
     expect(result.stdout, '/sdk/bin/flutter devices');
     expect(limit, const Duration(seconds: 60));
-  });
-
-  test('a timeout becomes a TimeoutException', () async {
-    final run = await make(
-      (_, _, {workingDirectory, required timeout}) async =>
-          throw const ExternalToolException('too slow'),
-    )();
-    await expectLater(run(['x']), throwsA(isA<TimeoutException>()));
   });
 
   test('a spawn failure stays an ExternalToolException', () async {

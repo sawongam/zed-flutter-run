@@ -41,9 +41,6 @@ class ControlException implements Exception {
 /// Longest accepted request line (without the newline).
 const int maxControlLineBytes = 64 * 1024;
 
-/// The fixed set of commands the server understands.
-const Set<String> controlCommands = {'ping', 'reload', 'restart'};
-
 /// The part of a running control server that a session publishes and closes.
 abstract interface class ControlEndpoint {
   int get port;

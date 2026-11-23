@@ -10,13 +10,10 @@ import 'proxy_state.dart';
 /// app started or ended) and publishes it as [ProxyState] and [ProxyEvent]s.
 class SessionTracker {
   SessionTracker({
-    required DapKind kind,
-    required void Function(String text, NoticeLevel level) onNotice,
-    required void Function() onProcessActivity,
-  }) : _kind = kind,
-       _onNotice = onNotice,
-       _onProcessActivity = onProcessActivity,
-       _state = const ProxyState(request: DapCommands.launch);
+    required this._kind,
+    required this._onNotice,
+    required this._onProcessActivity,
+  }) : _state = const ProxyState(request: DapCommands.launch);
 
   final DapKind _kind;
   final void Function(String text, NoticeLevel level) _onNotice;
