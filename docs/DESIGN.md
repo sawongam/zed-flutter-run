@@ -90,6 +90,10 @@ The extension can turn an existing Zed task into a debug scenario. It only claim
 
 Zed only calls a locator when the adapter is listed for the language, so this needs `"languages": {"Dart": {"debuggers": ["FlutterRun"]}}` in Zed settings.
 
+## The release workflow pins the checksums itself
+
+The extension carries the SHA-256 of each release binary, so the pin can only be written after the binaries exist. A person doing that after every release is a step that gets forgotten, so the last job of `release.yml` does it and pushes the commit straight to `prod`. A pull request would only add a click, because the commit is generated from `SHA256SUMS` and checked with the extension's fmt, clippy and tests. The commit is not part of the tagged release, and the registry points at it.
+
 ## Inside the Dart tool
 
 - **Modules do not import each other.** Each folder under `cli/lib/src/` imports only `common/` and itself. `cli/lib/src/cli/` is the one place that wires them together. A test (`cli/test/unit/architecture_test.dart`) enforces this.

@@ -5,8 +5,8 @@
 # skipped, so ordinary pushes do nothing.
 #
 # No pub.dev (see publish-pub.yml), crates.io, Homebrew, Scoop or Zed registry
-# publishing happens here. After the release, pin the checksums into the
-# extension: see docs/RELEASE.md.
+# publishing happens here. The last job pins the new checksums into the
+# extension and pushes that commit to prod: see docs/RELEASE.md.
 name: Release build
 
 on:
@@ -177,3 +177,42 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$TAG" \
             --notes-file release-notes.md
+
+  pin-checksums:
+    name: Pin checksums into the extension
+    needs: [version, publish-github-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # push the pin commit to prod
+    steps:
+      # Latest prod, not the released commit: the pin commit goes on top of it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: prod
+      - name: Write checksums.rs from the release's SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          gh release download "$TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP/release"
+          sh .github/scripts/pin-checksums.sh "$RUNNER_TEMP/release/SHA256SUMS" > extension/src/checksums.rs
+          [ "$(grep -c "\"flutter_run-$TAG-" extension/src/checksums.rs)" -eq 5 ] || {
+            echo "::error::Expected five $TAG entries in checksums.rs"
+            exit 1
+          }
+      - name: Extension still builds and passes
+        working-directory: extension
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+      - name: Commit and push to prod
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extension/src/checksums.rs
+          git commit -m "chore(release): pin $TAG checksums"
+          git push origin HEAD:prod
