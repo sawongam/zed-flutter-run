@@ -6,7 +6,6 @@ Run and debug Flutter apps in [Zed](https://zed.dev) the way you do in VS Code: 
 [![pub package](https://img.shields.io/pub/v/flutter_run.svg)](https://pub.dev/packages/flutter_run)
 [![Release](https://img.shields.io/github/v/release/sawongam/zed-flutter-run)](https://github.com/sawongam/zed-flutter-run/releases/latest)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sawongam/zed-flutter-run/badge)](https://scorecard.dev/viewer/?uri=github.com/sawongam/zed-flutter-run)
 
 ## What you get
 
