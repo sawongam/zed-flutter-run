@@ -1,5 +1,5 @@
 /// Package version; a unit test asserts it equals the version in pubspec.yaml.
-const String packageVersion = '0.1.1';
+const String packageVersion = '0.1.2';
 const int controlProtocolVersion = 1;
 const int sessionFileVersion = 1;
 const String adapterName = 'FlutterRun';

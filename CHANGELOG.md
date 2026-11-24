@@ -2,9 +2,9 @@
 
 This project follows [Semantic Versioning](https://semver.org/). The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.2] - 2026-11-24
 
-- Coloured output on terminal
+- Coloured output for `doctor`, `devices` and error lines when the stream is a terminal. Respects `NO_COLOR`; `FORCE_COLOR` turns it on for pipes.
 
 ## [0.1.1] - 2026-11-24
 
