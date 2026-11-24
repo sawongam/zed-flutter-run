@@ -1,6 +1,6 @@
 id = "flutter-run-debugger"
 name = "Flutter Run & Debug"
-version = "0.1.1"
+version = "0.1.2"
 schema_version = 1
 authors = ["sawongam"]
 description = "Flutter Run & Debug: hot reload, reload on save, device picker and DevTools for Zed."

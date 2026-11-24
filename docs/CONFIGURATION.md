@@ -107,6 +107,10 @@ Zed only asks a locator when the language of the open file lists the adapter, so
 | `FLUTTER_RUN_LOG` | Log file. Same rules as `logFile`: `.log` suffix, existing folder, owner-only. |
 | `FLUTTER_RUN_LOG_LEVEL` | `error`, `warn`, `info` (default), `debug` or `trace`. |
 | `FLUTTER_RUN_STATE_DIR` | Per-user state folder (saved device, session files). Must be writable by you only. |
+| `NO_COLOR` | Any non-empty value turns colour off. |
+| `FORCE_COLOR` | Any value except `0` turns colour on even when the output is a pipe. `NO_COLOR` wins over it. |
+
+Command output is coloured only when it goes to a terminal and `TERM` is not `dumb`. Stdout and stderr are decided separately, so `flutter_run devices | cat` has no escape codes. `--json` output is never coloured.
 
 Default state folder: `$XDG_STATE_HOME/flutter_run` or `~/.local/state/flutter_run` (Linux), `~/Library/Application Support/flutter_run` (macOS), `%LOCALAPPDATA%\flutter_run` (Windows).
 

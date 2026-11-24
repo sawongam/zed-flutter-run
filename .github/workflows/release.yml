@@ -4,9 +4,10 @@
 # the GitHub release. If the release already exists, every job after `version` is
 # skipped, so ordinary pushes do nothing.
 #
-# No pub.dev (see publish-pub.yml), crates.io, Homebrew, Scoop or Zed registry
-# publishing happens here. The last job pins the new checksums into the
-# extension and pushes that commit to prod: see docs/RELEASE.md.
+# No crates.io, Homebrew, Scoop or Zed registry publishing happens here. The
+# pin-checksums job pins the new checksums into the extension and pushes that
+# commit to prod. The last job starts publish-pub.yml on the new tag, which then
+# waits for approval in the pub.dev environment.
 name: Release build
 
 on:
@@ -216,3 +217,21 @@ jobs:
           git add extension/src/checksums.rs
           git commit -m "chore(release): pin $TAG checksums"
           git push origin HEAD:prod
+
+  publish-pub:
+    name: Start the pub.dev publish
+    needs: [version, pin-checksums]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write   # start publish-pub.yml
+    steps:
+      # A tag made with GITHUB_TOKEN does not trigger workflows, but a
+      # workflow_dispatch started through the API does. It must run on the tag:
+      # pub.dev only accepts a publish from a ref that matches v{{version}}.
+      - name: Run publish-pub.yml on the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: gh workflow run publish-pub.yml --ref "$TAG"

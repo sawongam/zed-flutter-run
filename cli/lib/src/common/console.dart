@@ -1,6 +1,8 @@
 import 'dart:collection';
 import 'dart:io';
 
+import 'style.dart';
+
 /// User-facing CLI output and input. Diagnostics go through `Logger`.
 abstract interface class Console {
   void out(String line);
@@ -9,8 +11,15 @@ abstract interface class Console {
   /// True when stdin AND stdout are terminals.
   bool get isInteractive;
 
-  /// True when stdout is a terminal and `NO_COLOR` is unset.
+  /// True when stdout gets colour (see [colorWanted]).
   bool get useColor;
+
+  /// Styling for text written with [out].
+  Style get style;
+
+  /// Styling for text written with [err]. Stderr can be a terminal while
+  /// stdout is a pipe, so it is decided on its own.
+  Style get errStyle;
 
   /// Reads one line; null at end of input.
   Future<String?> readLine();
@@ -34,9 +43,23 @@ class SystemConsole implements Console {
   bool get useColor {
     final forced = _color;
     if (forced != null) return forced;
-    final noColor = Platform.environment['NO_COLOR'];
-    return stdout.hasTerminal && (noColor == null || noColor.isEmpty);
+    return colorWanted(
+      isTerminal: stdout.hasTerminal,
+      environment: Platform.environment,
+    );
   }
+
+  @override
+  Style get style => Style(useColor);
+
+  @override
+  Style get errStyle => Style(
+    _color ??
+        colorWanted(
+          isTerminal: stderr.hasTerminal,
+          environment: Platform.environment,
+        ),
+  );
 
   @override
   Future<String?> readLine() async => stdin.readLineSync();
@@ -44,11 +67,15 @@ class SystemConsole implements Console {
 
 /// In-memory console for tests.
 class MemoryConsole implements Console {
-  MemoryConsole({List<String> input = const [], this._interactive = false})
-    : _input = Queue<String>.of(input);
+  MemoryConsole({
+    List<String> input = const [],
+    this._interactive = false,
+    this._color = false,
+  }) : _input = Queue<String>.of(input);
 
   final Queue<String> _input;
   final bool _interactive;
+  final bool _color;
   final List<String> outLines = [];
   final List<String> errLines = [];
 
@@ -62,7 +89,13 @@ class MemoryConsole implements Console {
   bool get isInteractive => _interactive;
 
   @override
-  bool get useColor => false;
+  bool get useColor => _color;
+
+  @override
+  Style get style => Style(_color);
+
+  @override
+  Style get errStyle => Style(_color);
 
   @override
   Future<String?> readLine() async =>

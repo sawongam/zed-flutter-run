@@ -122,12 +122,13 @@ Exit codes:
   /// Runs [args], mapping every failure to an exit code.
   Future<int> execute(Iterable<String> args, {bool verbose = false}) async {
     final console = wiring.console;
+    final style = console.errStyle;
     try {
       return await run(args) ?? ExitCodes.ok;
     } on FlutterRunException catch (e) {
-      console.err('error: ${e.message}');
+      console.err('${style.error('error:')} ${e.message}');
       final hint = e.hint;
-      if (hint != null) console.err('hint: $hint');
+      if (hint != null) console.err('${style.yellow('hint:')} $hint');
       return e.exitCode;
     } on UsageException catch (e) {
       console
@@ -136,7 +137,7 @@ Exit codes:
         ..err(e.usage);
       return ExitCodes.usage;
     } on Object catch (e, st) {
-      console.err('error: unexpected failure: $e');
+      console.err('${style.error('error:')} unexpected failure: $e');
       if (verbose) {
         console.err(st.toString());
       } else {
