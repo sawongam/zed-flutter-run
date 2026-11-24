@@ -68,21 +68,27 @@ class DevicesCommand extends Command<int> {
   }
 
   void _printTable(List<FlutterDevice> devices, String? savedId) {
+    final style = _console.style;
     final lines = formatTable([
       ['Name', 'Id', 'Platform'],
       for (final d in devices) [d.name, d.id, d.platform],
-    ]);
+    ], style: style);
     final marks = [' ', for (final d in devices) d.id == savedId ? '*' : ' '];
     for (var i = 0; i < lines.length; i++) {
-      _console.out('${marks[i]} ${lines[i]}');
+      _console.out('${style.green(marks[i])} ${lines[i]}');
     }
     if (savedId != null) {
       final connected = devices.any((d) => d.id == savedId);
       _console.out('');
       _console.out(
         connected
-            ? '* is the saved device. It is used the next time you start the app.'
-            : 'The saved device $savedId is not connected right now.',
+            ? style.dim(
+                '* is the saved device. It is used the next time you start '
+                'the app.',
+              )
+            : style.yellow(
+                'The saved device $savedId is not connected right now.',
+              ),
       );
     }
   }

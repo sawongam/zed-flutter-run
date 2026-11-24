@@ -116,7 +116,7 @@ class KeymapCommand extends Command<int> {
         ..out('Dry run: nothing was written.');
     } else {
       await atomicWriteString(keymapPath, content, env: _env);
-      _console.out('Added these keys to $keymapPath:');
+      _console.out(_console.style.green('Added these keys to $keymapPath:'));
     }
     for (final MapEntry(:key, :value) in keys.bindings.entries) {
       _console.out('  ${displayKey(key).padRight(17)} $value');

@@ -97,10 +97,10 @@ class EmulatorsCommand extends Command<int> {
     String label,
     String dir,
   ) async {
-    _console.out('Starting $label...');
+    _console.out('Starting ${_console.style.bold(label)}...');
     await launchEmulator(run, id, workingDirectory: dir);
     _console.out(
-      'Started $label. It can take a few seconds to appear in "flutter_run '
+      '${_console.style.green('Started')} $label. It can take a few seconds to appear in "flutter_run '
       'devices".',
     );
   }
@@ -109,6 +109,6 @@ class EmulatorsCommand extends Command<int> {
     formatTable([
       ['Id', 'Name', 'Manufacturer', 'Platform'],
       for (final e in emulators) [e.id, e.name, e.manufacturer, e.platform],
-    ]).forEach(_console.out);
+    ], style: _console.style).forEach(_console.out);
   }
 }

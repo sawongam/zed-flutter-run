@@ -205,9 +205,8 @@ abstract class HotActionCommand extends Command<int> {
   }
 
   String _mark(String word) {
-    if (!_console.useColor) return word;
-    final code = word == 'ok' ? '32' : '31';
-    return '\x1B[${code}m$word\x1B[0m';
+    final style = _console.style;
+    return word == 'ok' ? style.green(word) : style.red(word);
   }
 }
 
