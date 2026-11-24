@@ -3,7 +3,7 @@
 For maintainers. A release has an order that matters, because the extension carries the SHA-256 of each release binary and so must be finished after the binaries exist:
 
 ```
-version bump on `dev` -> merge `dev` into `prod` -> CI builds binaries, tags and publishes the GitHub release -> pin checksums -> pub.dev -> Zed registry
+version bump on `dev` -> merge `dev` into `prod` -> CI builds binaries, tags and publishes the GitHub release, then pins the checksums -> pub.dev -> Zed registry
 ```
 
 Examples below use `0.1.0`.
@@ -150,6 +150,13 @@ The binaries are not signed. Add this to the release notes by editing the releas
 
 ## 4. Pin the checksums
 
+The last job of `release.yml` does this. After the GitHub release exists it downloads `SHA256SUMS`, writes `extension/src/checksums.rs` with `.github/scripts/pin-checksums.sh`, runs the extension's fmt, clippy and tests, and pushes `chore(release): pin v0.1.0 checksums` to `prod`. This commit, not the tagged one, is what the Zed registry will point at.
+
+- [ ] The job is green and `prod` has the pin commit with five entries for this version.
+- [ ] Merge `prod` back into `dev` so the branches do not drift.
+
+If the job fails, do it by hand:
+
 ```sh
 gh release download v0.1.0 --pattern SHA256SUMS --dir /tmp/release
 sh .github/scripts/pin-checksums.sh /tmp/release/SHA256SUMS > extension/src/checksums.rs
@@ -157,7 +164,7 @@ git diff extension/src/checksums.rs    # five entries, one per asset
 cd extension && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && cargo build --release --target wasm32-wasip2
 ```
 
-Commit this as `chore(release): pin v0.1.0 checksums` and push. This commit, not the tagged one, is what the Zed registry will point at.
+Commit it as `chore(release): pin v0.1.0 checksums` and push to `prod`.
 
 - [ ] Test the download: install the extension from this commit as a dev extension, take `flutter_run` off your `PATH`, unset `dap.FlutterRun.binary` and start a debug session. The extension should download the binary, verify it, and start. The console warns that `flutter_run` is not on `PATH`, which is correct.
 
