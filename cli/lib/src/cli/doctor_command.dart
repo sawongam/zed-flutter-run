@@ -8,6 +8,7 @@ import '../common/errors.dart';
 import '../common/global_options.dart';
 import '../common/host_environment.dart';
 import '../common/paths.dart';
+import '../common/style.dart';
 import '../common/version.dart';
 import '../control/session_store.dart';
 import '../init/project_detect.dart';
@@ -52,21 +53,27 @@ class DoctorCommand extends Command<int> {
     final exe = _resolvedExecutable ?? Platform.resolvedExecutable;
 
     _console
-      ..out('$toolName $packageVersion')
+      ..out(_style.bold('$toolName $packageVersion'))
       ..out(
-        'Operating system: ${_env.os.name} (${Platform.operatingSystemVersion})',
+        _kv(
+          'Operating system',
+          '${_env.os.name} (${Platform.operatingSystemVersion})',
+        ),
       )
-      ..out('Executable: $exe')
+      ..out(_kv('Executable', exe))
       ..out('');
 
     ProjectInfo? project;
     try {
       project = detectProject(dir, _env);
       _console.out(
-        'Project: ${project.root} (${project.kind.name} project "${project.name}")',
+        _kv(
+          'Project',
+          '${project.root} (${project.kind.name} project "${project.name}")',
+        ),
       );
     } on FlutterRunException catch (e) {
-      _console.out('Project: ${e.message}');
+      _console.out(_kv('Project', _style.yellow(e.message)));
     }
     final projectDir = project?.root ?? dir;
 
@@ -102,10 +109,13 @@ class DoctorCommand extends Command<int> {
     _console
       ..out('')
       ..out(
-        'How the ${kind == SdkKind.dart ? 'Dart' : 'Flutter'} SDK was looked for:',
+        _style.heading(
+          'How the ${kind == SdkKind.dart ? 'Dart' : 'Flutter'} SDK was '
+          'looked for:',
+        ),
       );
     for (final line in resolution.describeTrace().split('\n')) {
-      _console.out('  $line');
+      _console.out('  ${_traceLine(line)}');
     }
     final flutter = resolution.flutter;
     final found = kind == SdkKind.flutter
@@ -114,23 +124,30 @@ class DoctorCommand extends Command<int> {
     if (flutter != null) {
       _console
         ..out(
-          'Flutter SDK: ${flutter.root ?? flutter.flutterExecutable} '
-          '(found by step "${flutter.sourceStep}")',
+          _kv(
+            'Flutter SDK',
+            '${_style.green(flutter.root ?? flutter.flutterExecutable)} '
+                '(found by step "${flutter.sourceStep}")',
+          ),
         )
-        ..out('Flutter version: ${flutter.flutterVersion ?? 'unknown'}');
+        ..out(_kv('Flutter version', flutter.flutterVersion ?? 'unknown'));
     } else {
-      _console.out('Flutter SDK: not found');
+      _console.out(_kv('Flutter SDK', _style.red('not found')));
     }
     if (kind == SdkKind.dart) {
+      final dart = resolution.dartExecutable;
       _console.out(
-        'Dart executable: ${resolution.dartExecutable ?? 'not found'}',
+        _kv(
+          'Dart executable',
+          dart == null ? _style.red('not found') : _style.green(dart),
+        ),
       );
     }
-    _console.out('Dart version: ${flutter?.dartVersion ?? 'unknown'}');
+    _console.out(_kv('Dart version', flutter?.dartVersion ?? 'unknown'));
     if (!found) {
       _console
         ..out('')
-        ..out('No SDK was found. $sdkSearchHint');
+        ..out('${_style.error('No SDK was found.')} $sdkSearchHint');
     }
     return found;
   }
@@ -138,10 +155,12 @@ class DoctorCommand extends Command<int> {
   void _printPathStatus(String exe) {
     final onPath = findExecutableOnPath(toolName, _env);
     if (onPath != null) {
-      _console.out('flutter_run on PATH: yes ($onPath)');
+      _console.out(
+        _kv('flutter_run on PATH', '${_style.green('yes')} ($onPath)'),
+      );
       return;
     }
-    _console.out('flutter_run on PATH: no');
+    _console.out(_kv('flutter_run on PATH', _style.yellow('no')));
     final ctx = _env.pathContext;
     final base = ctx.basename(exe).toLowerCase();
     if (base == 'dart' || base == 'dart.exe') {
@@ -162,9 +181,9 @@ class DoctorCommand extends Command<int> {
         if (entry.key.startsWith(envPrefix)) '${entry.key}=${entry.value}',
     ]..sort();
     if (overrides.isEmpty) {
-      _console.out('Environment overrides: none');
+      _console.out(_kv('Environment overrides', _style.dim('none')));
     } else {
-      _console.out('Environment overrides:');
+      _console.out(_style.bold('Environment overrides:'));
       for (final line in overrides) {
         _console.out('  $line');
       }
@@ -185,8 +204,12 @@ class DoctorCommand extends Command<int> {
     final live = records.length - unresponsive;
     final stale = files - records.length;
     _console.out(
-      'Sessions folder: $directory ($live running, $unresponsive not '
-      'answering, ${stale < 0 ? 0 : stale} stale)',
+      _kv(
+        'Sessions folder',
+        '$directory ($live running, '
+            '${unresponsive > 0 ? _style.red('$unresponsive not answering') : '$unresponsive not answering'}, '
+            '${stale < 0 ? 0 : stale} stale)',
+      ),
     );
   }
 
@@ -199,7 +222,9 @@ class DoctorCommand extends Command<int> {
     final path = _env.pathContext.join(projectDir, '.zed', fileName);
     final file = File(path);
     if (!file.existsSync()) {
-      _console.out('.zed/$fileName: not found (run "flutter_run init")');
+      _console.out(
+        _zed(fileName, _style.yellow('not found'), '(run "flutter_run init")'),
+      );
       return;
     }
     final Object? decoded;
@@ -207,13 +232,18 @@ class DoctorCommand extends Command<int> {
       decoded = jsonDecode(file.readAsStringSync());
     } on Object {
       _console.out(
-        '.zed/$fileName: found, but it is not plain JSON (comments or '
-        'trailing commas?), so its entries were not checked',
+        _zed(
+          fileName,
+          _style.yellow('found, but it is not plain JSON'),
+          '(comments or trailing commas?), so its entries were not checked',
+        ),
       );
       return;
     }
     if (decoded is! List) {
-      _console.out('.zed/$fileName: found, but it is not a list');
+      _console.out(
+        _zed(fileName, _style.yellow('found, but it is not a list'), ''),
+      );
       return;
     }
     final present = <String>{
@@ -221,7 +251,9 @@ class DoctorCommand extends Command<int> {
         if (entry is Map && entry['label'] is String) entry['label'] as String,
     };
     if (project == null) {
-      _console.out('.zed/$fileName: found (${decoded.length} entries)');
+      _console.out(
+        _zed(fileName, _style.green('found'), '(${decoded.length} entries)'),
+      );
       return;
     }
     final expected = [
@@ -231,16 +263,44 @@ class DoctorCommand extends Command<int> {
     final missing = expected.where((l) => !present.contains(l)).toList();
     if (missing.length == expected.length) {
       _console.out(
-        '.zed/$fileName: found, but none of the flutter_run entries are in it '
-        '(run "flutter_run init" to add them)',
+        _zed(
+          fileName,
+          _style.yellow('found, but none of the flutter_run entries are in it'),
+          '(run "flutter_run init" to add them)',
+        ),
       );
     } else if (missing.isEmpty) {
-      _console.out('.zed/$fileName: found, with all flutter_run entries');
+      _console.out(
+        _zed(fileName, _style.green('found, with all flutter_run entries'), ''),
+      );
     } else {
       _console.out(
-        '.zed/$fileName: found, missing ${missing.length} flutter_run entries '
-        '(run "flutter_run init" to add them)',
+        _zed(
+          fileName,
+          _style.yellow('found, missing ${missing.length} flutter_run entries'),
+          '(run "flutter_run init" to add them)',
+        ),
       );
     }
+  }
+
+  Style get _style => _console.style;
+
+  /// "Label: value" with a bold label.
+  String _kv(String label, String value) => '${_style.bold('$label:')} $value';
+
+  String _zed(String fileName, String status, String note) =>
+      '${_style.bold('.zed/$fileName:')} $status${note.isEmpty ? '' : ' $note'}';
+
+  /// Colours one line of the SDK search trace: green when that step found
+  /// the SDK, dim when it was skipped.
+  String _traceLine(String line) {
+    final found = line.indexOf(' - found');
+    if (found >= 0) {
+      return line.substring(0, found + 3) +
+          _style.green(line.substring(found + 3));
+    }
+    if (line.contains(' - skipped')) return _style.dim(line);
+    return line;
   }
 }

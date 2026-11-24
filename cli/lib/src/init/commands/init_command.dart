@@ -146,8 +146,8 @@ class InitCommand extends Command<int> {
       case MergeCreated(:final content):
         _console.out(
           dryRun
-              ? _wouldCreate(shownName, entries.length)
-              : _created(shownName, entries.length),
+              ? _console.style.yellow(_wouldCreate(shownName, entries.length))
+              : _console.style.green(_created(shownName, entries.length)),
         );
         if (dryRun) {
           _console.out(content.trimRight());
@@ -158,8 +158,8 @@ class InitCommand extends Command<int> {
       case MergeUpdated(:final content, :final added, :final kept):
         _console.out(
           dryRun
-              ? _wouldMerge(shownName, added, kept)
-              : _merged(shownName, added, kept),
+              ? _console.style.yellow(_wouldMerge(shownName, added, kept))
+              : _console.style.green(_merged(shownName, added, kept)),
         );
         if (dryRun) {
           _console.out(content.trimRight());
@@ -170,7 +170,7 @@ class InitCommand extends Command<int> {
       case MergeNeedsManual(:final reason, :final snippet):
         if (!force) {
           _console
-            ..out(_couldNotEdit(shownName, reason))
+            ..out(_console.style.yellow(_couldNotEdit(shownName, reason)))
             ..out(snippet);
           return true;
         }

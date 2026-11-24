@@ -16,6 +16,7 @@ Future<T?> pickFromList<T>(
   Future<List<T>> Function()? rescan,
   int maxAttempts = 3,
 }) async {
+  final style = console.style;
   var current = List<T>.of(items);
   var invalid = 0;
   var showList = true;
@@ -29,8 +30,9 @@ Future<T?> pickFromList<T>(
         final saved =
             savedId != null && idOf != null && idOf(current[i]) == savedId;
         console.out(
-          '  ${(i + 1).toString().padLeft(2)}) ${label(current[i])}'
-          '${saved ? ' (saved)' : ''}',
+          '  ${style.cyan('${(i + 1).toString().padLeft(2)})')} '
+          '${label(current[i])}'
+          '${saved ? style.green(' (saved)') : ''}',
         );
       }
       showList = false;
@@ -62,6 +64,8 @@ Future<T?> pickFromList<T>(
         hint: 'Run the command again and enter one of the listed numbers.',
       );
     }
-    console.out('"$line" is not one of the choices. Please try again.');
+    console.out(
+      style.yellow('"$line" is not one of the choices. Please try again.'),
+    );
   }
 }

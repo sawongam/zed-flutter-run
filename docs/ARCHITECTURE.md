@@ -191,7 +191,7 @@ All of this is under `cli/lib/src/`.
 
 | Module | Contents |
 |---|---|
-| `common/` | Version and protocol constants, `ExitCodes` and exceptions, `Clock`, `HostEnvironment`, paths and state directory, atomic file writes, `Logger`, `Console` |
+| `common/` | Version and protocol constants, `ExitCodes` and exceptions, `Clock`, `HostEnvironment`, paths and state directory, atomic file writes, `Logger`, `Console`, `Style` (ANSI colour that is a no-op when colour is off) |
 | `dap/` | The proxy, framing, `DapMessage`, launch rewriting, injected requests, `HotActions`, lifecycle, start-up watchdog, `ShutdownCoordinator`, notices |
 | `control/` | Control protocol and server, `ControlClient`, session file model and `SessionStore`, the `reload`, `restart` and `status` commands |
 | `sdk/` | `SdkResolver`, process start (`ManagedProcess`, `ProcessSpec`, `ProcessRunner`), process table and `killTree` |

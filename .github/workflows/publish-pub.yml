@@ -9,8 +9,9 @@
 # The job below pauses for that approval, so nothing is published unattended.
 name: Publish to pub.dev
 
-# Run it by hand from the release tag (Run workflow > pick the tag vX.Y.Z). It is
-# not automatic because tags created by the release workflow do not start other workflows.
+# release.yml starts this on the new tag after the checksums are pinned (tags made
+# with GITHUB_TOKEN do not trigger workflows, so it is started through the API).
+# It can also be run by hand from a tag (Run workflow > pick the tag vX.Y.Z).
 on:
   workflow_dispatch:
 

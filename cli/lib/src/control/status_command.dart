@@ -92,9 +92,16 @@ class StatusCommand extends Command<int> {
           : 'starting';
       final project = _env.pathContext.basename(info.projectRoot);
       final marker = matching.contains(r) ? '*' : ' ';
+      final style = _console.style;
+      final shownState = switch (state) {
+        'running' => style.green(state),
+        'starting' => style.yellow(state),
+        _ => style.red(state),
+      };
       _console.out(
-        '$marker pid ${info.pid}  ${info.kind}  ${info.deviceId ?? '-'}  '
-        '$project  $state  ${info.projectRoot}',
+        '${style.green(marker)} pid ${info.pid}  ${info.kind}  '
+        '${info.deviceId ?? '-'}  ${style.bold(project)}  $shownState  '
+        '${style.dim(info.projectRoot)}',
       );
     }
     if (matching.isNotEmpty) {
