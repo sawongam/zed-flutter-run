@@ -94,6 +94,10 @@ Zed only calls a locator when the adapter is listed for the language, so this ne
 
 The extension carries the SHA-256 of each release binary, so the pin can only be written after the binaries exist. A person doing that after every release is a step that gets forgotten, so the last job of `release.yml` does it and pushes the commit straight to `prod`. A pull request would only add a click, because the commit is generated from `SHA256SUMS` and checked with the extension's fmt, clippy and tests. The commit is not part of the tagged release, and the registry points at it.
 
+## The pub.dev publish is started by the release, and still needs one approval
+
+A tag created with `GITHUB_TOKEN` does not trigger other workflows, so `publish-pub.yml` cannot listen for tags. The last job of `release.yml` starts it through the API (`workflow_dispatch`) on the new tag, after the checksums are pinned. It has to run on the tag because pub.dev only accepts a publish from a ref that matches `v{{version}}`. The job keeps the required reviewer on the `pub.dev` environment: a published version can never be removed, so one click per release is cheap against a bad publish.
+
 ## Colour is off unless the stream is a terminal
 
 Colour helps in `doctor`, `devices` and the error lines, but escape codes in a pipe or a log file are noise. So `Style` returns the text unchanged unless the stream is a terminal, `NO_COLOR` is unset and `TERM` is not `dumb`; `FORCE_COLOR` is the opt-in for pipes. Stdout and stderr are checked separately, because one can be a terminal while the other is not. Padding happens before styling so table columns stay aligned. There is no colour dependency: the codes are a few constants.
