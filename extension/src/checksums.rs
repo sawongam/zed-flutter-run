@@ -3,24 +3,24 @@
 
 pub const PINNED_SHA256: &[(&str, &str)] = &[
     (
-        "flutter_run-v0.1.0-linux-arm64",
-        "56514f0b67c5abb8b6a1a1d681a0330d2b180728ddde5add610bab2c1a1a30f7",
+        "flutter_run-v0.1.1-linux-arm64",
+        "3fb0bdaab5e86c23fd164417b6a431a3d184d5d387583d79563a76011caf4d7e",
     ),
     (
-        "flutter_run-v0.1.0-linux-x64",
-        "09a5b5a8b478fa34793f45b03e40ac787e76304d34fd198862f150d1ea00e944",
+        "flutter_run-v0.1.1-linux-x64",
+        "79babeeb1cf402f5de19859cc6364e4155e2e74d144237600f5d7d4be9e584ef",
     ),
     (
-        "flutter_run-v0.1.0-macos-arm64",
-        "c76a7f532de1b158c0a4e9939c3fbddb1bdc037cc3caeaf631df691fcff7977b",
+        "flutter_run-v0.1.1-macos-arm64",
+        "004674a9e8a24f8e1b0cd0eca735b66623cbe7047f9f0d4390304f3c2fef148d",
     ),
     (
-        "flutter_run-v0.1.0-macos-x64",
-        "6679f56c59e48c9cea7646fc4e9c05fd0e4696cfe901bc1e6408c85cf6b1e2e2",
+        "flutter_run-v0.1.1-macos-x64",
+        "758c3fd7d55723549b71e1cbfc4f4422fe083fc8c709a2f135986529b896836b",
     ),
     (
-        "flutter_run-v0.1.0-windows-x64.exe",
-        "16e3f0ad0ba0f684d5edc268da127a6c9d227b4b8ffde0f55a3e0b515b67a5c5",
+        "flutter_run-v0.1.1-windows-x64.exe",
+        "175b754828d058fc5c98072e41a09cb220d6af4cab85d56705d2de933706ed78",
     ),
 ];
 
