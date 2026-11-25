@@ -24,7 +24,7 @@ Future<T?> pickFromList<T>(
   while (true) {
     if (showList) {
       if (current.isEmpty) {
-        console.out('There is nothing to choose from.');
+        console.out(style.yellow('There is nothing to choose from.'));
       }
       for (var i = 0; i < current.length; i++) {
         final saved =
@@ -38,8 +38,10 @@ Future<T?> pickFromList<T>(
       showList = false;
     }
     console.out(
-      'Enter a number${idOf != null ? ' or an id' : ''}'
-      '${rescan != null ? ', r to scan again' : ''}, or q to cancel:',
+      style.bold(
+        'Enter a number${idOf != null ? ' or an id' : ''}'
+        '${rescan != null ? ', r to scan again' : ''}, or q to cancel:',
+      ),
     );
     final line = (await console.readLine())?.trim();
     if (line == null || line.isEmpty || line.toLowerCase() == 'q') {

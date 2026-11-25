@@ -88,18 +88,20 @@ class DevToolsCommand extends Command<int> {
       _console.out(url.toString());
       return ExitCodes.ok;
     }
-    _console.out('Opening DevTools: $url');
+    final style = _console.style;
+    _console.out('${style.green('Opening DevTools:')} ${style.cyan('$url')}');
     try {
       await _opener.open(url);
     } on FlutterRunException catch (e) {
-      _console.err('Error: ${e.message}');
-      _console.err(
-        e is BrowserRefusedException
-            ? 'Run "flutter_run devtools --print" to show the address.'
-            : 'The DevTools address is printed above; open it in a browser '
-                  'yourself. If the page does not load, DevTools needs the '
-                  'Dart Development Service, which is on by default.',
-      );
+      final hint = e is BrowserRefusedException
+          ? 'Run "flutter_run devtools --print" to show the address.'
+          : 'The DevTools address is printed above; open it in a browser '
+                'yourself. If the page does not load, DevTools needs the '
+                'Dart Development Service, which is on by default.';
+      final errStyle = _console.errStyle;
+      _console
+        ..err('${errStyle.error('error:')} ${e.message}')
+        ..err('${errStyle.yellow('hint:')} $hint');
       return ExitCodes.externalToolFailed;
     }
     return ExitCodes.ok;

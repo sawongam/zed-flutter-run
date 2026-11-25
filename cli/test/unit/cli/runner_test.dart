@@ -69,6 +69,18 @@ void main() {
     },
   );
 
+  test('help goes to the console, not straight to stdout', () async {
+    expect(await runner.execute(['help']), 0);
+    final text = t.console.outLines.join('\n');
+    expect(text, contains('Usage: flutter_run'));
+    expect(text, contains('Exit codes:'));
+  });
+
+  test('a command\'s --help goes to the console too', () async {
+    expect(await runner.execute(['keymap', '--help']), 0);
+    expect(t.console.outLines.join('\n'), contains('--reload-key'));
+  });
+
   test('version prints the tool name and version', () async {
     expect(await runner.execute(['version']), 0);
     expect(t.console.outLines, ['flutter_run 0.1.3']);

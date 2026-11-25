@@ -2,6 +2,11 @@
 
 This project follows [Semantic Versioning](https://semver.org/). The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+- Every command now uses colour in a terminal, not only `doctor`, `devices` and error lines. This covers `help` and `--help` (headings, flags, command names and exit codes), `init`, `keymap`, `select-device`, `emulators`, `reload`, `restart`, `status` and `devtools`. The text is the same as before, and the colour rules have not changed.
+- `devtools` prints a browser failure as `error:` and `hint:`, like the other commands. A usage error now starts with `error:`.
+
 ## [0.1.3] - 2026-11-25
 
 Release process fix. No change in behaviour.

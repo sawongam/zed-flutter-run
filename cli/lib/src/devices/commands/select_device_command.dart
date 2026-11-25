@@ -59,10 +59,12 @@ class SelectDeviceCommand extends Command<int> {
 
     if (clear) {
       final removed = await _store.clear(root);
+      final style = _console.style;
       _console.out(
         removed
-            ? 'Cleared the saved device. Flutter picks a device again.'
-            : 'There was no saved device for this project.',
+            ? '${style.green('Cleared')} the saved device. Flutter picks a '
+                  'device again.'
+            : style.dim('There was no saved device for this project.'),
       );
       return ExitCodes.ok;
     }
@@ -105,7 +107,9 @@ class SelectDeviceCommand extends Command<int> {
         rescan: () async => devices = await scan(),
       );
       if (chosen == null) {
-        _console.out('No device was chosen. Nothing was changed.');
+        _console.out(
+          _console.style.dim('No device was chosen. Nothing was changed.'),
+        );
         return ExitCodes.ok;
       }
     }
@@ -119,12 +123,16 @@ class SelectDeviceCommand extends Command<int> {
         savedAt: _clock.now().toUtc(),
       ),
     );
+    final style = _console.style;
     _console.out(
-      'Saved device: ${chosen.name} (${chosen.id}). It is used the next time '
-      'you start the app. The running app keeps its device.',
+      '${style.green('Saved device:')} ${style.bold(chosen.name)} '
+      '${style.dim('(${chosen.id})')}. It is used the next time you start '
+      'the app. The running app keeps its device.',
     );
     _console.out(
-      'Start the app from the debugger (F4 opens the picker in Zed).',
+      style.dim(
+        'Start the app from the debugger (F4 opens the picker in Zed).',
+      ),
     );
     return ExitCodes.ok;
   }
