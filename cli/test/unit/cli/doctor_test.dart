@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_run/src/cli/runner.dart';
 import 'package:flutter_run/src/common/errors.dart';
+import 'package:flutter_run/src/common/version.dart';
 import 'package:flutter_run/src/init/project_detect.dart';
 import 'package:flutter_run/src/init/templates.dart';
 import 'package:test/test.dart';
@@ -33,7 +34,7 @@ void main() {
     File('$project/.fvmrc').writeAsStringSync('{"flutter":"3.99.0"}');
     final code = await runner.execute(['doctor', '--project', project]);
     expect(code, ExitCodes.sdkNotFound);
-    expect(out(), contains('flutter_run 0.1.3'));
+    expect(out(), contains('flutter_run $packageVersion'));
     expect(out(), contains('How the Flutter SDK was looked for:'));
     expect(out(), contains('.fvmrc'));
     expect(out(), contains('Flutter SDK: not found'));
