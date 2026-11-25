@@ -37,5 +37,14 @@ if need extension/src/install.rs; then
   check install.rs extension/src/install.rs "$(sed -n 's/.*PROXY_VERSION[^=]*=[[:space:]]*"\([^"]*\)".*/\1/p' extension/src/install.rs | head -n 1)"
 fi
 
+# pub.dev warns when the package changelog lacks the version, and the release
+# workflow cannot be redone on the same tag, so catch it before the release.
+for f in CHANGELOG.md cli/CHANGELOG.md; do
+  if need "$f" && ! grep -q "^## \[$first\]" "$f"; then
+    echo "ERROR: $f has no '## [$first]' section" >&2
+    status=1
+  fi
+done
+
 [ "$status" -eq 0 ] && echo "OK: all versions match ($first)"
 exit "$status"
