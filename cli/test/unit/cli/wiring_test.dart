@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_run/src/cli/wiring.dart';
 import 'package:flutter_run/src/common/errors.dart';
 import 'package:flutter_run/src/common/json_types.dart';
+import 'package:flutter_run/src/common/version.dart';
 import 'package:flutter_run/src/control/control_protocol.dart';
 import 'package:flutter_run/src/control/control_server.dart';
 import 'package:flutter_run/src/control/session_info.dart';
@@ -55,7 +56,11 @@ void main() {
   group('ProxySessionControl', () {
     test('ping reports pid, version and protocol', () {
       final control = ProxySessionControl(HotActions(_FakeInjector()), pid: 42);
-      expect(control.ping(), {'pid': 42, 'version': '0.1.3', 'protocol': 1});
+      expect(control.ping(), {
+        'pid': 42,
+        'version': packageVersion,
+        'protocol': 1,
+      });
     });
 
     test('reload and restart return durations', () async {

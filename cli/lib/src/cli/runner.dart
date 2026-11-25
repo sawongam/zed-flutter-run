@@ -10,6 +10,7 @@ import '../common/global_options.dart';
 import '../common/version.dart';
 import 'commands.dart';
 import 'dap_command.dart';
+import 'usage_style.dart';
 import 'wiring.dart';
 
 /// True when [args] ask for debug output (`-v` / `--verbose`).
@@ -124,7 +125,16 @@ Exit codes:
     final console = wiring.console;
     final style = console.errStyle;
     try {
-      return await run(args) ?? ExitCodes.ok;
+      // package:args prints help with print(), which skips the Console. The
+      // zone sends it through the Console so it gets colour and tests see it.
+      return await runZoned<Future<int?>>(
+            () => run(args),
+            zoneSpecification: ZoneSpecification(
+              print: (_, _, _, line) =>
+                  console.out(styleUsage(line, console.style)),
+            ),
+          ) ??
+          ExitCodes.ok;
     } on FlutterRunException catch (e) {
       console.err('${style.error('error:')} ${e.message}');
       final hint = e.hint;
@@ -132,9 +142,9 @@ Exit codes:
       return e.exitCode;
     } on UsageException catch (e) {
       console
-        ..err(e.message)
+        ..err('${style.error('error:')} ${e.message}')
         ..err('')
-        ..err(e.usage);
+        ..err(styleUsage(e.usage, style));
       return ExitCodes.usage;
     } on Object catch (e, st) {
       console.err('${style.error('error:')} unexpected failure: $e');

@@ -2,17 +2,22 @@
 
 This project follows [Semantic Versioning](https://semver.org/). The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.3] - 2026-11-25
+## [0.1.4]
+
+- Every command now uses colour in a terminal, not only `doctor`, `devices` and error lines. This covers `help` and `--help` (headings, flags, command names and exit codes), `init`, `keymap`, `select-device`, `emulators`, `reload`, `restart`, `status` and `devtools`. The text is the same as before, and the colour rules have not changed.
+- `devtools` prints a browser failure as `error:` and `hint:`, like the other commands. A usage error now starts with `error:`.
+
+## [0.1.3]
 
 Release process fix. No change in behaviour.
 
 - The package changelog now has the notes for each release. 0.1.2 was never published to pub.dev, so this is the first pub.dev version with coloured output.
 
-## [0.1.2] - 2026-11-24
+## [0.1.2]
 
 - Coloured output for `doctor`, `devices` and error lines when the stream is a terminal. Respects `NO_COLOR`; `FORCE_COLOR` turns it on for pipes.
 
-## [0.1.1] - 2026-11-24
+## [0.1.1]
 
 Documentation release. No change in behaviour.
 
@@ -21,7 +26,7 @@ Documentation release. No change in behaviour.
 - The README and the example now install with `dart pub global activate flutter_run`.
 - Removed the preview notice.
 
-## [0.1.0] - 2026-11-23
+## [0.1.0]
 
 First preview release.
 

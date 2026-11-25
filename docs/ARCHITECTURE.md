@@ -199,7 +199,7 @@ All of this is under `cli/lib/src/`.
 | `watch/` | Reload-on-save settings, path filter, content hashes, coalescer, watcher |
 | `devtools/` | Page names, URL building, browser opener, the `devtools` command |
 | `init/` | Project detection (entry points from `.vscode/launch.json` or `lib/main_<flavor>.dart`, local packages), scenario and task templates, JSON and JSONC merge, key bindings and their known clashes, the `init` and `keymap` commands |
-| `cli/` | `FlutterRunRunner`, `Wiring`, `buildCommands`, `DapCommand`, `DapSessionHost`, `SessionNotices`, `doctor` and `version` |
+| `cli/` | `FlutterRunRunner`, `Wiring`, `buildCommands`, `DapCommand`, `DapSessionHost`, `SessionNotices`, `styleUsage` (colour for help text), `doctor` and `version` |
 
 Import rule: `common/` imports no other module, each feature module imports only `common/` and itself, and only `cli/` imports the feature modules and connects them. `cli/test/unit/architecture_test.dart` checks every import.
 
