@@ -2,6 +2,12 @@
 
 This project follows [Semantic Versioning](https://semver.org/). The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.3] - 2026-11-25
+
+Release process fix. No change in behaviour.
+
+- The package changelog now has the notes for each release, which pub.dev needs. 0.1.2 was never published to pub.dev, so 0.1.3 is the first pub.dev version with coloured output.
+
 ## [0.1.2] - 2026-11-24
 
 - Coloured output for `doctor`, `devices` and error lines when the stream is a terminal. Respects `NO_COLOR`; `FORCE_COLOR` turns it on for pipes.

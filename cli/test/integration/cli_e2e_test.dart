@@ -159,7 +159,7 @@ void main() {
 
     test('version prints the package version', () async {
       final result = await cli(['version'], expectExit: 0);
-      expect(result.stdout.trim(), 'flutter_run 0.1.2');
+      expect(result.stdout.trim(), 'flutter_run 0.1.3');
     });
 
     test('status prunes a session file whose proxy is gone', () async {
