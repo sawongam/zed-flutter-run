@@ -60,7 +60,7 @@ To try a change in Zed, compile the CLI onto your `PATH` and install the extensi
 cd cli && dart compile exe bin/flutter_run.dart -o ~/.local/bin/flutter_run
 ```
 
-Then run `zed: install dev extension` in Zed and choose the `extension/` folder. [docs/RELEASE.md](docs/RELEASE.md#manual-test-in-zed) has a checklist of what to try.
+Then run `zed: install dev extension` in Zed and choose the `extension/` folder.
 
 ## Code rules
 
@@ -78,6 +78,12 @@ Then run `zed: install dev extension` in Zed and choose the `extension/` folder.
 - If you change a `debug.json` key, update `extension/debug_adapter_schemas/FlutterRun.json`, the `init` templates and [docs/CONFIGURATION.md](docs/CONFIGURATION.md) together.
 - If you change a command, flag, message or exit code, update [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 - No telemetry and no new network access.
+
+## Releasing
+
+1. Bump the version in the five places `.github/scripts/check-versions.sh` checks (it also needs a section for the version in `CHANGELOG.md` and `cli/CHANGELOG.md`), merge to `dev`, then open a pull request from `dev` to `prod`.
+2. The merge to `prod` runs `release.yml`: it builds the binaries, creates the tag and the GitHub release, and starts the pub.dev publish. Approve that in the `pub.dev` environment.
+3. Pin the checksums: `gh release download vX.Y.Z --pattern SHA256SUMS`, then `sh .github/scripts/pin-checksums.sh SHA256SUMS > extension/src/checksums.rs`. Open a pull request into `prod` with that file (`chore: pin vX.Y.Z checksums`), and merge `prod` back into `dev`.
 
 ## Testing on your setup
 

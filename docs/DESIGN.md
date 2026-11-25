@@ -90,13 +90,13 @@ The extension can turn an existing Zed task into a debug scenario. It only claim
 
 Zed only calls a locator when the adapter is listed for the language, so this needs `"languages": {"Dart": {"debuggers": ["FlutterRun"]}}` in Zed settings.
 
-## The release workflow pins the checksums itself
+## The checksums are pinned by hand, in a pull request
 
-The extension carries the SHA-256 of each release binary, so the pin can only be written after the binaries exist. A person doing that after every release is a step that gets forgotten, so the last job of `release.yml` does it and pushes the commit straight to `prod`. A pull request would only add a click, because the commit is generated from `SHA256SUMS` and checked with the extension's fmt, clippy and tests. The commit is not part of the tagged release, and the registry points at it.
+The extension carries the SHA-256 of each release binary, so the pin can only be written after the binaries exist. The release workflow used to push that commit to `prod` itself. That stopped working when `prod` began to require pull requests and status checks: on a personal repository the Actions bot cannot be added to a ruleset's bypass list, and a pull request opened with `GITHUB_TOKEN` does not start CI, so the required checks would never report. Doing it with a personal token would put a long-lived secret in the repository for one small commit. So the release workflow stops at the tag and the pub.dev publish, and the maintainer opens one pin pull request per release. `pin-checksums.sh` generates the file, and the extension still refuses any download whose hash is not pinned. The pin commit is not part of the tagged release, and the registry points at it.
 
 ## The pub.dev publish is started by the release, and still needs one approval
 
-A tag created with `GITHUB_TOKEN` does not trigger other workflows, so `publish-pub.yml` cannot listen for tags. The last job of `release.yml` starts it through the API (`workflow_dispatch`) on the new tag, after the checksums are pinned. It has to run on the tag because pub.dev only accepts a publish from a ref that matches `v{{version}}`. The job keeps the required reviewer on the `pub.dev` environment: a published version can never be removed, so one click per release is cheap against a bad publish.
+A tag created with `GITHUB_TOKEN` does not trigger other workflows, so `publish-pub.yml` cannot listen for tags. The last job of `release.yml` starts it through the API (`workflow_dispatch`) on the new tag. It has to run on the tag because pub.dev only accepts a publish from a ref that matches `v{{version}}`. The job keeps the required reviewer on the `pub.dev` environment: a published version can never be removed, so one click per release is cheap against a bad publish.
 
 ## Colour is off unless the stream is a terminal
 

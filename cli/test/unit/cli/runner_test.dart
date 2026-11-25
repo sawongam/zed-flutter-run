@@ -71,13 +71,13 @@ void main() {
 
   test('version prints the tool name and version', () async {
     expect(await runner.execute(['version']), 0);
-    expect(t.console.outLines, ['flutter_run 0.1.2']);
+    expect(t.console.outLines, ['flutter_run 0.1.3']);
   });
 
   test('--version and -V print the same as the version command', () async {
     expect(await runner.execute(['--version']), 0);
     expect(await runner.execute(['-V']), 0);
-    expect(t.console.outLines, ['flutter_run 0.1.2', 'flutter_run 0.1.2']);
+    expect(t.console.outLines, ['flutter_run 0.1.3', 'flutter_run 0.1.3']);
   });
 
   test(
