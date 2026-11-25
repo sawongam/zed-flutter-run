@@ -55,7 +55,7 @@ void main() {
   group('ProxySessionControl', () {
     test('ping reports pid, version and protocol', () {
       final control = ProxySessionControl(HotActions(_FakeInjector()), pid: 42);
-      expect(control.ping(), {'pid': 42, 'version': '0.1.2', 'protocol': 1});
+      expect(control.ping(), {'pid': 42, 'version': '0.1.3', 'protocol': 1});
     });
 
     test('reload and restart return durations', () async {
