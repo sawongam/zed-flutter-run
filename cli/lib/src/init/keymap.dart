@@ -1,4 +1,5 @@
 import '../common/host_environment.dart';
+import '../common/style.dart';
 
 /// Every binding sits behind this context, so the keys only change while a
 /// debug session runs and Zed's own meaning of them comes back afterwards.
@@ -177,18 +178,26 @@ List<String> keyConflicts(
 }
 
 /// Zed's debugger keys plus ours.
-String keyTable(KeyChoice keys) {
+String keyTable(KeyChoice keys, {Style style = Style.plain}) {
   final reload = keys.reload == null ? null : displayKey(keys.reload!);
   final restart = keys.restart == null ? null : displayKey(keys.restart!);
+  // Pad before styling so the escape codes do not break the alignment.
+  String row(String key, String action) =>
+      '  ${style.cyan(key.padRight(16))}$action';
   return [
-    'Keys in Zed:',
-    '  F4              Start or choose a debug scenario.',
-    '  F5              Run the last scenario again; Continue when paused.',
-    '  Shift+F5        Stop.',
-    if (reload != null) '  ${reload.padRight(16)}Hot reload.',
-    if (restart != null) '  ${restart.padRight(16)}Hot restart.',
-    'The hot reload and restart keys only work while a debug session runs.',
-    'Zed has no key for "run without debugging": pick a "(no debug)" scenario with F4.',
+    style.heading('Keys in Zed:'),
+    row('F4', 'Start or choose a debug scenario.'),
+    row('F5', 'Run the last scenario again; Continue when paused.'),
+    row('Shift+F5', 'Stop.'),
+    if (reload != null) row(reload, 'Hot reload.'),
+    if (restart != null) row(restart, 'Hot restart.'),
+    style.dim(
+      'The hot reload and restart keys only work while a debug session runs.',
+    ),
+    style.dim(
+      'Zed has no key for "run without debugging": pick a "(no debug)" '
+      'scenario with F4.',
+    ),
   ].join('\n');
 }
 

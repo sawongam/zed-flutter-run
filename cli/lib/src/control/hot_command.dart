@@ -83,8 +83,8 @@ abstract class HotActionCommand extends Command<int> {
     );
     if (below.isNotEmpty) {
       _console.err(
-        'Note: $directory contains Flutter projects, so every running app '
-        'below it is included.',
+        '${_console.errStyle.yellow('Note:')} $directory contains Flutter '
+        'projects, so every running app below it is included.',
       );
     }
 
@@ -93,8 +93,10 @@ abstract class HotActionCommand extends Command<int> {
 
     final waiting = _clock.timer(_waitingNoticeAfter, () {
       _console.err(
-        'Waiting... the app may be paused at a breakpoint (Ctrl+C to stop '
-        'waiting).',
+        _console.errStyle.dim(
+          'Waiting... the app may be paused at a breakpoint (Ctrl+C to stop '
+          'waiting).',
+        ),
       );
     });
     final List<_Outcome> outcomes;
@@ -119,20 +121,23 @@ abstract class HotActionCommand extends Command<int> {
   /// The sessions that can act now; says on stderr why each other one cannot.
   List<SessionRecord> _eligibleSessions(List<SessionRecord> matching) {
     final eligible = <SessionRecord>[];
+    final style = _console.errStyle;
     for (final record in matching) {
       final info = record.info;
       if (info.kind != 'flutter') {
         _console.err(
-          'Skipped pid ${info.pid}: it is a Dart console session, not a '
-          'Flutter app.',
+          '${style.yellow('Skipped')} pid ${info.pid}: it is a Dart console '
+          'session, not a Flutter app.',
         );
       } else if (record.unresponsive) {
         _console.err(
-          'Skipped pid ${info.pid}: it did not answer. If Zed is hung, stop '
-          'that debug session.',
+          '${style.yellow('Skipped')} pid ${info.pid}: it did not answer. If '
+          'Zed is hung, stop that debug session.',
         );
       } else if (!info.appStarted) {
-        _console.err('pid ${info.pid}: the app is still starting.');
+        _console.err(
+          'pid ${info.pid}: ${style.yellow('the app is still starting.')}',
+        );
       } else {
         eligible.add(record);
       }
@@ -155,7 +160,9 @@ abstract class HotActionCommand extends Command<int> {
     final info = record.info;
     final device = info.deviceId ?? 'unknown device';
     final project = _env.pathContext.basename(info.projectRoot);
-    final prefix = '$actionLabel: $device $project';
+    final style = _console.style;
+    final prefix =
+        '${style.bold('$actionLabel:')} $device ${style.cyan(project)}';
     _Outcome failure(String message, {bool timedOut = false}) => _Outcome(
       '$prefix ${_mark('failed')}: $message',
       ok: false,

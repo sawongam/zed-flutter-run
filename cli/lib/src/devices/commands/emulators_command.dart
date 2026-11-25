@@ -84,7 +84,9 @@ class EmulatorsCommand extends Command<int> {
       rescan: () => listEmulators(run, workingDirectory: dir),
     );
     if (chosen == null) {
-      _console.out('No emulator was chosen. Nothing was started.');
+      _console.out(
+        _console.style.dim('No emulator was chosen. Nothing was started.'),
+      );
       return ExitCodes.ok;
     }
     await _launch(run, chosen.id, chosen.name, dir);

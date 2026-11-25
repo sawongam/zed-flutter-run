@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_run/src/common/host_environment.dart';
 import 'package:flutter_run/src/common/paths.dart';
+import 'package:flutter_run/src/common/version.dart';
 import 'package:flutter_run/src/devices/device_store.dart';
 import 'package:json_schema/json_schema.dart';
 import 'package:path/path.dart' as p;
@@ -159,7 +160,7 @@ void main() {
 
     test('version prints the package version', () async {
       final result = await cli(['version'], expectExit: 0);
-      expect(result.stdout.trim(), 'flutter_run 0.1.3');
+      expect(result.stdout.trim(), 'flutter_run $packageVersion');
     });
 
     test('status prunes a session file whose proxy is gone', () async {

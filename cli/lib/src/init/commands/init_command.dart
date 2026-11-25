@@ -9,6 +9,7 @@ import '../../common/files.dart';
 import '../../common/global_options.dart';
 import '../../common/host_environment.dart';
 import '../../common/json_types.dart';
+import '../../common/style.dart';
 import '../json_merge.dart';
 import '../keymap.dart';
 import '../project_detect.dart';
@@ -61,9 +62,10 @@ class InitCommand extends Command<int> {
     final ctx = _env.pathContext;
     final zedDir = ctx.join(project.root, '.zed');
 
-    _console.out(_projectLine(project));
+    final style = _console.style;
+    _console.out(_projectLine(project, style));
     if (project.usesFvm) _console.out(_fvmLine);
-    for (final line in _detectionLines(project)) {
+    for (final line in _detectionLines(project, style)) {
       _console.out(line);
     }
 
@@ -83,35 +85,37 @@ class InitCommand extends Command<int> {
       if (outcome) manualSteps++;
     }
 
-    if (dryRun) _console.out(_dryRunLine);
+    if (dryRun) _console.out(style.yellow(_dryRunLine));
 
     _console
       ..out('')
-      ..out(keyTable(KeyChoice.defaults(_env.os)))
+      ..out(keyTable(KeyChoice.defaults(_env.os), style: style))
       ..out('')
       ..out(_keymapLine)
       ..out('')
-      ..out(_consoleTabLine);
+      ..out(style.dim(_consoleTabLine));
 
     final onPath = _findOnPath();
     if (onPath != null) {
-      _console.out('flutter_run on PATH: yes ($onPath)');
+      _console.out(
+        'flutter_run on PATH: ${style.green('yes')} ${style.dim('($onPath)')}',
+      );
     } else {
       _console
-        ..out('flutter_run on PATH: no')
-        ..out(_notOnPathLine);
+        ..out('flutter_run on PATH: ${style.yellow('no')}')
+        ..out(_warning(_notOnPathLine, style));
       for (final line in _pathFixHint.split('\n')) {
         _console.out(line);
       }
     }
     _console
       ..out('')
-      ..out(_commitNote);
+      ..out(style.dim(_commitNote));
 
     if (manualSteps > 0) {
       _console
         ..out('')
-        ..out(_doneWithManual(manualSteps));
+        ..out(style.yellow(_doneWithManual(manualSteps)));
       return ExitCodes.manualActionRequired;
     }
     return ExitCodes.ok;
@@ -179,14 +183,14 @@ class InitCommand extends Command<int> {
         final backupName = _env.pathContext.basename(backup);
         if (dryRun) {
           _console
-            ..out(_wouldBackUp(shownName, backupName))
+            ..out(_console.style.yellow(_wouldBackUp(shownName, backupName)))
             ..out(fresh.trimRight());
         } else {
           await file.copy(backup);
           await atomicWriteString(path, fresh, env: _env);
           _console
-            ..out(_backedUp(backupName))
-            ..out(_replaced(shownName, entries.length));
+            ..out(_console.style.yellow(_backedUp(backupName)))
+            ..out(_console.style.green(_replaced(shownName, entries.length)));
         }
         return false;
     }
@@ -214,12 +218,27 @@ class InitCommand extends Command<int> {
   static const String _commitNote =
       'The .zed folder is usually committed. Teammates without flutter_run on their PATH can still debug, but the tasks fail for them; "Flutter: Doctor" explains why.';
 
-  static String _projectLine(ProjectInfo p) => switch (p.kind) {
-    ProjectKind.flutter => 'Flutter app "${p.name}" in ${p.root}',
-    ProjectKind.dart => 'Dart package "${p.name}" in ${p.root}',
-  };
+  static String _projectLine(ProjectInfo p, Style style) {
+    final name = style.bold('"${p.name}"');
+    final root = style.dim(p.root);
+    return switch (p.kind) {
+      ProjectKind.flutter => 'Flutter app $name in $root',
+      ProjectKind.dart => 'Dart package $name in $root',
+    };
+  }
 
-  static List<String> _detectionLines(ProjectInfo p) => [
+  /// Colours the leading "Warning:" of [line].
+  static String _warning(String line, Style style) {
+    const prefix = 'Warning:';
+    if (!line.startsWith(prefix)) return line;
+    return '${style.yellow(prefix)}${line.substring(prefix.length)}';
+  }
+
+  static List<String> _detectionLines(ProjectInfo p, Style style) => [
+    for (final line in _detectionText(p)) _warning(line, style),
+  ];
+
+  static List<String> _detectionText(ProjectInfo p) => [
     for (final t in p.launchTargets)
       t.fromLaunchJson
           ? 'Found "${t.name}" in .vscode/launch.json (${t.program}).'

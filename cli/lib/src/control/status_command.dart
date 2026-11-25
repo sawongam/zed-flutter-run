@@ -105,7 +105,7 @@ class StatusCommand extends Command<int> {
       );
     }
     if (matching.isNotEmpty) {
-      _console.out('* matches $directory');
+      _console.out(_console.style.dim('* matches $directory'));
     }
     return ExitCodes.ok;
   }

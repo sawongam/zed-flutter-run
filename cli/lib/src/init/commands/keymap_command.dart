@@ -95,11 +95,14 @@ class KeymapCommand extends Command<int> {
       }
       final already = _existingBindings(decoded);
       if (already.isNotEmpty) {
-        _console.out('$keymapPath already has Flutter keys:');
-        for (final MapEntry(:key, :value) in already.entries) {
-          _console.out('  ${displayKey(key).padRight(17)} $value');
-        }
-        _console.out(_alreadyLine);
+        final style = _console.style;
+        _console.out(
+          '${style.bold(keymapPath)} ${style.green('already has Flutter keys')}:',
+        );
+        _printBindings(already);
+        _console
+          ..out('')
+          ..out(style.dim(_alreadyLine));
         return ExitCodes.ok;
       }
       final appended = appendToJsoncArray(existing, encodeJsonFile(block));
@@ -109,20 +112,32 @@ class KeymapCommand extends Command<int> {
       content = appended;
     }
 
+    final style = _console.style;
     if (dryRun) {
       _console
-        ..out('Would add these keys to $keymapPath:')
+        ..out(
+          '${style.yellow('Would add')} these keys to '
+          '${style.bold(keymapPath)}:',
+        )
         ..out(snippet)
-        ..out('Dry run: nothing was written.');
+        ..out(style.yellow('Dry run: nothing was written.'));
     } else {
       await atomicWriteString(keymapPath, content, env: _env);
-      _console.out(_console.style.green('Added these keys to $keymapPath:'));
+      _console.out(
+        '${style.green('Added')} these keys to ${style.bold(keymapPath)}:',
+      );
     }
-    for (final MapEntry(:key, :value) in keys.bindings.entries) {
-      _console.out('  ${displayKey(key).padRight(17)} $value');
-    }
+    _printBindings(keys.bindings);
     _printNotes(keys, settings);
     return ExitCodes.ok;
+  }
+
+  void _printBindings(Map<String, String> bindings) {
+    final style = _console.style;
+    for (final MapEntry(:key, :value) in bindings.entries) {
+      // Pad before styling so the escape codes do not break the alignment.
+      _console.out('  ${style.cyan(displayKey(key).padRight(17))} $value');
+    }
   }
 
   KeyChoice _keyChoice(ArgResults results) {
@@ -255,31 +270,38 @@ class KeymapCommand extends Command<int> {
     final usesFunctionKeys = keys.bindings.keys.any(
       (k) => RegExp(r'(^|-)f\d+$').hasMatch(k),
     );
+    final style = _console.style;
     _console
       ..out('')
-      ..out(keyTable(keys));
+      ..out(keyTable(keys, style: style));
     if (notes.isNotEmpty) {
       _console.out('');
       for (final note in notes) {
-        _console.out('Note: $note');
+        _console.out('${style.yellow('Note:')} $note');
       }
     }
     if (usesFunctionKeys) {
       _console
         ..out('')
-        ..out(_env.os == HostOs.macos ? macosKeyNote() : functionKeyNote());
+        ..out(
+          style.dim(
+            _env.os == HostOs.macos ? macosKeyNote() : functionKeyNote(),
+          ),
+        );
     }
     _console
       ..out('')
-      ..out(_tasksLine)
-      ..out(_restartZedLine);
+      ..out(style.dim(_tasksLine))
+      ..out(style.dim(_restartZedLine));
   }
 
   int _manual(String path, String reason, String snippet) {
     _console
       ..out(
-        'Could not safely edit $path ($reason). Nothing was changed. Open it '
-        'with "zed: open keymap file" and add this:',
+        _console.style.yellow(
+          'Could not safely edit $path ($reason). Nothing was changed. Open '
+          'it with "zed: open keymap file" and add this:',
+        ),
       )
       ..out(snippet);
     return ExitCodes.manualActionRequired;

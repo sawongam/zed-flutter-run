@@ -100,7 +100,9 @@ A tag created with `GITHUB_TOKEN` does not trigger other workflows, so `publish-
 
 ## Colour is off unless the stream is a terminal
 
-Colour helps in `doctor`, `devices` and the error lines, but escape codes in a pipe or a log file are noise. So `Style` returns the text unchanged unless the stream is a terminal, `NO_COLOR` is unset and `TERM` is not `dumb`; `FORCE_COLOR` is the opt-in for pipes. Stdout and stderr are checked separately, because one can be a terminal while the other is not. Padding happens before styling so table columns stay aligned. There is no colour dependency: the codes are a few constants.
+Every command colours its output: headings, keys and flags, success in green, warnings in yellow, side notes dimmed. Colour only highlights, so the words read the same without it. But escape codes in a pipe or a log file are noise. So `Style` returns the text unchanged unless the stream is a terminal, `NO_COLOR` is unset and `TERM` is not `dumb`; `FORCE_COLOR` is the opt-in for pipes. Stdout and stderr are checked separately, because one can be a terminal while the other is not. Padding happens before styling so table columns stay aligned. There is no colour dependency: the codes are a few constants.
+
+`package:args` prints help with `print()`, which goes around `Console`. The runner runs each command in a zone that sends `print()` through `Console` and `styleUsage`, so help gets the same colour rules and tests can see it. Nothing else in the tool calls `print()`.
 
 ## Inside the Dart tool
 

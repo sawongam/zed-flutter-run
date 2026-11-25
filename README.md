@@ -33,7 +33,7 @@ dart pub global activate flutter_run
 flutter_run doctor
 
 # 2. The Zed extension (once per computer)
-git clone https://github.com/sawongam/zed-flutter-run ~/zed-flutter-run
+git clone --branch prod https://github.com/sawongam/zed-flutter-run ~/zed-flutter-run
 #    then in Zed: command palette > "zed: install dev extension" > ~/zed-flutter-run/extension
 
 # 3. The keys for hot reload and hot restart (once per computer)
@@ -72,7 +72,7 @@ export PATH="$PATH:$HOME/.pub-cache/bin"
 **Windows:** Zed cannot manage the `.bat` launcher that `dart pub global activate` creates. Download `flutter_run-<version>-windows-x64.exe` from the [latest release](https://github.com/sawongam/zed-flutter-run/releases/latest), rename it to `flutter_run.exe` and put it in a folder on your `PATH`. Or build it yourself:
 
 ```powershell
-git clone https://github.com/sawongam/zed-flutter-run
+git clone --branch prod https://github.com/sawongam/zed-flutter-run
 cd zed-flutter-run\cli
 dart pub get
 dart compile exe bin\flutter_run.dart -o flutter_run.exe
@@ -90,7 +90,7 @@ flutter_run doctor
 
 The extension is not in Zed's extension store yet, so install it from a clone of this repository:
 
-1. Clone the repository, if you have not already: `git clone https://github.com/sawongam/zed-flutter-run`
+1. Clone the repository, if you have not already: `git clone --branch prod https://github.com/sawongam/zed-flutter-run`
 2. In Zed, open the command palette (Ctrl+Shift+P, or Cmd+Shift+P on macOS) and run **`zed: install dev extension`**.
 3. Choose the `extension` folder inside the clone.
 
