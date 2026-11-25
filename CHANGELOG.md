@@ -2,10 +2,10 @@
 
 This project follows [Semantic Versioning](https://semver.org/). The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.4]
 
-- Every command now uses colour in a terminal, not only `doctor`, `devices` and error lines. This covers `help` and `--help` (headings, flags, command names and exit codes), `init`, `keymap`, `select-device`, `emulators`, `reload`, `restart`, `status` and `devtools`. The text is the same as before, and the colour rules have not changed.
-- `devtools` prints a browser failure as `error:` and `hint:`, like the other commands. A usage error now starts with `error:`.
+- Every command now uses colour in a terminal.
+- The install steps clone the `prod` branch (`git clone --branch prod`), so the extension matches the released tool.
 
 ## [0.1.3]
 

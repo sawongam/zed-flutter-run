@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/sawongam/zed-flutter-run/main/extension/debug_adapter_schemas/FlutterRun.json",
+  "$id": "https://raw.githubusercontent.com/sawongam/zed-flutter-run/prod/extension/debug_adapter_schemas/FlutterRun.json",
   "title": "Flutter Run & Debug (FlutterRun) Debug Adapter Configuration",
   "description": "Configuration of one FlutterRun entry in .zed/debug.json. Unknown keys are allowed on purpose: Dart-Code launch.json entries can be pasted without edits, and the Dart/Flutter debug adapter ignores keys it does not know. Each property's x-support says who handles it: implemented (this extension or its flutter_run proxy), passthrough (forwarded to the Dart/Flutter debug adapter) or ignored (accepted, no effect).",
   "markdownDescription": "Configuration of one `FlutterRun` entry in `.zed/debug.json`.\n\n`additionalProperties` stays `true` on purpose: Dart-Code `launch.json` entries can be pasted without edits, and the Dart/Flutter debug adapter ignores keys it does not know.\n\nEach property's `x-support` says who handles it: `implemented` (this extension or its `flutter_run` proxy), `passthrough` (forwarded to the Dart/Flutter debug adapter) or `ignored` (accepted, no effect).",
